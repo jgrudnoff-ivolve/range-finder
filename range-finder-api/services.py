@@ -2,6 +2,7 @@ import math
 from dataclasses import dataclass
 
 MIN_LINE_PIXELS = 20
+GOLF_FLAG_HEIGHT_CM = 220.0
 
 
 class ServiceValidationError(ValueError):
@@ -23,6 +24,17 @@ class CalibrationInput:
 @dataclass
 class EstimateDistanceInput:
     real_object_height_cm: float
+    focal_length_pixels: float
+    line_x1: float
+    line_y1: float
+    line_x2: float
+    line_y2: float
+    image_width: int
+    image_height: int
+
+
+@dataclass
+class GolfEstimateInput:
     focal_length_pixels: float
     line_x1: float
     line_y1: float
@@ -99,4 +111,23 @@ def estimate_distance(data: EstimateDistanceInput):
         "distance_cm": round(dist, 2),
         "distance_m": round(dist / 100, 3),
         "object_height_pixels": round(px, 2),
+    }
+
+
+def estimate_golf_distance(data: GolfEstimateInput):
+    validate_positive("focal_length_pixels", data.focal_length_pixels)
+
+    px, _, _ = measure_line(
+        data.line_x1, data.line_y1,
+        data.line_x2, data.line_y2,
+        data.image_width, data.image_height
+    )
+
+    dist = calculate_distance(GOLF_FLAG_HEIGHT_CM, px, data.focal_length_pixels)
+
+    return {
+        "distance_cm": round(dist, 2),
+        "distance_m": round(dist / 100, 3),
+        "object_height_pixels": round(px, 2),
+        "assumed_object_height_cm": GOLF_FLAG_HEIGHT_CM,
     }

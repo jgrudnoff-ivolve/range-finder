@@ -15,20 +15,30 @@ export function ResultCard({ title, content }: Props) {
   return (
     <View
       style={{
-        backgroundColor: "white",
-        borderRadius: 16,
+        backgroundColor: "#fffaf2",
+        borderRadius: 24,
         padding: 16,
         borderWidth: 1,
-        borderColor: "#e5e5e5",
+        borderColor: "#d8cfbf",
       }}
     >
-      <Text style={{ fontWeight: "600", marginBottom: 8 }}>{title}</Text>
+      <Text style={{ fontWeight: "700", marginBottom: 6, color: "#1f1a14", fontSize: 18 }}>
+        {title}
+      </Text>
+      <Text style={{ color: "#6f665b", fontSize: 13, marginBottom: 12 }}>
+        Server response and calculation output.
+      </Text>
       <Text
         selectable
         style={{
           fontFamily: "monospace",
           fontSize: 12,
           color: "#222",
+          backgroundColor: "#ffffff",
+          borderWidth: 1,
+          borderColor: "#e8dfd0",
+          borderRadius: 16,
+          padding: 12,
         }}
       >
         {formattedContent}

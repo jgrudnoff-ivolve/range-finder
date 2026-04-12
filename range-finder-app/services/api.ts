@@ -1,6 +1,11 @@
 import { Platform } from "react-native";
 
-import { CalibrationResponse, EstimateResponse, Point } from "../types";
+import {
+  CalibrationResponse,
+  EstimateResponse,
+  GolfEstimateResponse,
+  Point,
+} from "../types";
 
 type CalibrateInput = {
   apiBaseUrl: string;
@@ -14,6 +19,13 @@ type EstimateInput = {
   apiBaseUrl: string;
   imageUri: string;
   realObjectHeightCm: string;
+  focalLengthPixels: string;
+  points: Point[];
+};
+
+type GolfEstimateInput = {
+  apiBaseUrl: string;
+  imageUri: string;
   focalLengthPixels: string;
   points: Point[];
 };
@@ -126,6 +138,42 @@ export async function estimateDistance(
 
   if (!response.ok) {
     throw new Error(data?.detail || "Distance estimation failed");
+  }
+
+  return data;
+}
+
+export async function estimateGolfDistance(
+  input: GolfEstimateInput
+): Promise<GolfEstimateResponse> {
+  const formData = new FormData();
+
+  formData.append("image", await createImageFormPart(input.imageUri));
+  formData.append("focal_length_pixels", input.focalLengthPixels);
+  formData.append("line_x1", String(input.points[0].x));
+  formData.append("line_y1", String(input.points[0].y));
+  formData.append("line_x2", String(input.points[1].x));
+  formData.append("line_y2", String(input.points[1].y));
+
+  const response = await fetch(
+    `${input.apiBaseUrl}/estimate-golf-distance`,
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+
+  const text = await response.text();
+  let data: any;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(text || "Invalid response from server");
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.detail || "Golf distance estimation failed");
   }
 
   return data;

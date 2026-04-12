@@ -23,3 +23,7 @@ export type EstimateResponse = {
   confidence?: string;
   warnings?: string[];
 };
+
+export type GolfEstimateResponse = EstimateResponse & {
+  assumed_object_height_cm: number;
+};

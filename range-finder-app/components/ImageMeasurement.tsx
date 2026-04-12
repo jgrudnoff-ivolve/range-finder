@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
   GestureResponderEvent,
   Image,
@@ -30,13 +30,6 @@ export function ImageMeasurement({
   const displayWidth = Math.max(1, containerWidth);
   const displayHeight =
     imageWidth > 0 ? displayWidth * (imageHeight / imageWidth) : 320;
-
-  const lineLengthPixels = useMemo(() => {
-    if (points.length !== 2) return null;
-    const dx = points[1].x - points[0].x;
-    const dy = points[1].y - points[0].y;
-    return Math.round(Math.hypot(dx, dy) * 100) / 100;
-  }, [points]);
 
   const handleImagePress = (event: GestureResponderEvent) => {
     if (!imageUri || imageWidth <= 0 || imageHeight <= 0) return;
@@ -76,14 +69,19 @@ export function ImageMeasurement({
   return (
     <View
       style={{
-        backgroundColor: "white",
-        borderRadius: 16,
+        backgroundColor: "#fffaf2",
+        borderRadius: 20,
         padding: 16,
         borderWidth: 1,
-        borderColor: "#e5e5e5",
+        borderColor: "#d8cfbf",
       }}
     >
-      <Text style={{ fontWeight: "600", marginBottom: 12 }}>Measurement</Text>
+      <Text style={{ fontWeight: "700", marginBottom: 4, color: "#1f1a14", fontSize: 17 }}>
+        Measurement
+      </Text>
+      <Text style={{ color: "#6f665b", fontSize: 13, marginBottom: 12, lineHeight: 18 }}>
+        Keep the current two-tap flow, but make it easier to read: first tap the top of the object, then tap the bottom.
+      </Text>
 
       {imageUri ? (
         <>
@@ -107,9 +105,9 @@ export function ImageMeasurement({
                 height: displayHeight,
                 alignSelf: "center",
                 overflow: "hidden",
-                borderRadius: 12,
+                borderRadius: 16,
                 borderWidth: 1,
-                borderColor: "#ccc",
+                borderColor: "#bfb29b",
                 backgroundColor: "#fff",
               }}
             >
@@ -136,7 +134,7 @@ export function ImageMeasurement({
                       borderRadius: 8,
                       borderWidth: 2,
                       borderColor: "white",
-                      backgroundColor: index === 0 ? "green" : "red",
+                      backgroundColor: index === 0 ? "#2f855a" : "#c05621",
                     }}
                   />
                 );
@@ -151,7 +149,7 @@ export function ImageMeasurement({
                     top: lineTop,
                     width: lineWidth,
                     height: lineThickness,
-                    backgroundColor: "red",
+                    backgroundColor: "#c05621",
                     transform: [{ rotate: `${lineAngle}rad` }],
                   }}
                 />
@@ -162,42 +160,42 @@ export function ImageMeasurement({
           <Text
             style={{
               textAlign: "center",
-              color: "#666",
+              color: "#6f665b",
               fontSize: 12,
-              marginTop: 8,
+              marginTop: 10,
+              lineHeight: 18,
             }}
           >
-            Tap once for the top point, then once for the bottom point.
+            Tap once for the top point, then once for the bottom point. A fresh tap after two points starts a new measurement.
           </Text>
-
-          <View style={{ marginTop: 12 }}>
-            <Text style={{ fontSize: 14 }}>
-              Top point: {point1 ? `${point1.x}, ${point1.y}` : "not set"}
-            </Text>
-            <Text style={{ fontSize: 14 }}>
-              Bottom point: {point2 ? `${point2.x}, ${point2.y}` : "not set"}
-            </Text>
-            <Text style={{ fontSize: 14 }}>
-              Line length: {lineLengthPixels ?? "not set"}
-            </Text>
-          </View>
 
           <Pressable
             onPress={onClearPoints}
             style={{
               marginTop: 12,
-              backgroundColor: "#e5e5e5",
+              backgroundColor: "#efe7da",
               paddingVertical: 12,
-              borderRadius: 12,
+              borderRadius: 14,
             }}
           >
-            <Text style={{ textAlign: "center", fontWeight: "600" }}>
+            <Text style={{ textAlign: "center", fontWeight: "700", color: "#1f1a14" }}>
               Clear points
             </Text>
           </Pressable>
         </>
       ) : (
-        <Text style={{ color: "#666" }}>Choose an image first.</Text>
+        <View
+          style={{
+            borderRadius: 16,
+            borderWidth: 1,
+            borderStyle: "dashed",
+            borderColor: "#d8cfbf",
+            padding: 16,
+            backgroundColor: "#ffffff",
+          }}
+        >
+          <Text style={{ color: "#6f665b" }}>Choose an image first.</Text>
+        </View>
       )}
     </View>
   );

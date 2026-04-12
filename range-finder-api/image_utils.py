@@ -13,6 +13,7 @@ MIN_IMAGE_DIMENSION = 200
 class LoadedImage:
     width: int
     height: int
+    image: Image.Image
 
 
 def validate_upload(content_type: str | None, file_bytes: bytes):
@@ -36,4 +37,4 @@ def load_and_validate_image(file_bytes: bytes) -> LoadedImage:
     if w < MIN_IMAGE_DIMENSION or h < MIN_IMAGE_DIMENSION:
         raise ServiceValidationError("Image too small")
 
-    return LoadedImage(w, h)
+    return LoadedImage(w, h, image.convert("RGB"))
