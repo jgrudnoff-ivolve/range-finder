@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActionSheetIOS,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -82,9 +84,16 @@ export default function App() {
 
   const palette = palettes[screen];
 
-  async function pickImage() {
-    const permission =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+  function applyPickedAsset(asset: ImagePicker.ImagePickerAsset) {
+    setImageUri(asset.uri);
+    setImageWidth(asset.width || 1);
+    setImageHeight(asset.height || 1);
+    setPoints([]);
+    setResult({ kind: "idle" });
+  }
+
+  async function chooseFromLibrary() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
       Alert.alert("Permission required", "Please allow photo library access.");
@@ -99,12 +108,67 @@ export default function App() {
 
     if (result.canceled || !result.assets?.length) return;
 
-    const asset = result.assets[0];
-    setImageUri(asset.uri);
-    setImageWidth(asset.width || 1);
-    setImageHeight(asset.height || 1);
-    setPoints([]);
-    setResult({ kind: "idle" });
+    applyPickedAsset(result.assets[0]);
+  }
+
+  async function takePhoto() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Please allow camera access.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+      allowsEditing: false,
+      cameraType: ImagePicker.CameraType.back,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    applyPickedAsset(result.assets[0]);
+  }
+
+  async function pickImage() {
+    if (Platform.OS === "web") {
+      await chooseFromLibrary();
+      return;
+    }
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ["Cancel", "Take photo", "Choose from library"],
+          cancelButtonIndex: 0,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === 1) {
+            await takePhoto();
+          } else if (buttonIndex === 2) {
+            await chooseFromLibrary();
+          }
+        }
+      );
+      return;
+    }
+
+    Alert.alert("Choose image", "Select where to get the image from.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Take photo",
+        onPress: () => {
+          void takePhoto();
+        },
+      },
+      {
+        text: "Choose from library",
+        onPress: () => {
+          void chooseFromLibrary();
+        },
+      },
+    ]);
   }
 
   function handleAddPoint(point: Point) {
@@ -275,535 +339,535 @@ export default function App() {
 
         {screen === "estimate" ? (
           <>
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: 24,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: palette.border,
-              gap: 12,
-            }}
-          >
-            <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-              Estimate Distance
-            </Text>
-            <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
-              This is the main workflow. Choose a photo, mark the object, and estimate how far away it is.
-            </Text>
-          </View>
-
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: 24,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: palette.border,
-              gap: 14,
-            }}
-          >
-            <View style={{ gap: 4 }}>
+            <View
+              style={{
+                backgroundColor: palette.surface,
+                borderRadius: 24,
+                padding: 18,
+                borderWidth: 1,
+                borderColor: palette.border,
+                gap: 12,
+              }}
+            >
               <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-                Photo Setup
+                Estimate Distance
               </Text>
-              <Text style={{ color: palette.muted, fontSize: 13 }}>
-                Pick a photo, then tap the top and bottom of the object you want to measure.
+              <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
+                This is the main workflow. Choose a photo, mark the object, and estimate how far away it is.
               </Text>
             </View>
 
-            <Pressable
-              onPress={pickImage}
+            <View
               style={{
-                backgroundColor: palette.accent,
-                paddingVertical: 14,
-                borderRadius: 16,
-                shadowColor: palette.accentDark,
-                shadowOpacity: 0.18,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 4 },
-                elevation: 2,
-              }}
-            >
-              <Text
-                style={{ color: "white", textAlign: "center", fontWeight: "700" }}
-              >
-                {imageUri ? "Choose a different image" : "Choose image"}
-              </Text>
-            </Pressable>
-
-            {imageUri ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  gap: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                <View
-                  style={{
-                    backgroundColor: palette.accentSoft,
-                    borderRadius: 999,
-                    paddingHorizontal: 12,
-                    paddingVertical: 7,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: palette.accentDark,
-                      fontSize: 12,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {imageWidth} x {imageHeight}
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-
-            <ImageMeasurement
-              imageUri={imageUri}
-              imageWidth={imageWidth}
-              imageHeight={imageHeight}
-              points={points}
-              onAddPoint={handleAddPoint}
-              onClearPoints={handleClearPoints}
-            />
-          </View>
-
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: 24,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: palette.border,
-              gap: 10,
-            }}
-          >
-            <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-              Estimation Inputs
-            </Text>
-            <Text style={{ color: palette.muted, fontSize: 13 }}>
-              Estimation uses a saved calibration preset, so users don't have to type focal length values manually.
-            </Text>
-
-            <Text
-              style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
-            >
-              Real object height (cm)
-            </Text>
-            <TextInput
-              value={realObjectHeightCm}
-              onChangeText={setRealObjectHeightCm}
-              keyboardType="decimal-pad"
-              style={{
+                backgroundColor: palette.surface,
+                borderRadius: 24,
+                padding: 18,
                 borderWidth: 1,
                 borderColor: palette.border,
-                borderRadius: 14,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
-                backgroundColor: palette.surfaceStrong,
-                color: palette.text,
-              }}
-            />
-
-            <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>
-              Calibration preset
-            </Text>
-            <ProfileDropdown
-              palette={palette}
-              profiles={profiles}
-              selectedProfile={selectedProfile}
-              selectedFocalLength={focalLengthPixels}
-              open={profileDropdownOpen}
-              emptyMessage="Choose a saved calibration profile to enable estimating."
-              onToggle={() => setProfileDropdownOpen((current) => !current)}
-              onSelect={handleUseProfile}
-            />
-
-            <Pressable
-              onPress={handleEstimateSubmit}
-              disabled={loading || !selectedProfile}
-              style={{
-                backgroundColor:
-                  loading || !selectedProfile ? palette.accentDark : palette.accent,
-                paddingVertical: 14,
-                borderRadius: 16,
-                marginTop: 6,
-                opacity: loading || !selectedProfile ? 0.72 : 1,
+                gap: 14,
               }}
             >
-              <Text
-                style={{ color: "white", textAlign: "center", fontWeight: "700" }}
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
+                  Photo Setup
+                </Text>
+                <Text style={{ color: palette.muted, fontSize: 13 }}>
+                  Pick a photo, then tap the top and bottom of the object you want to measure.
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={pickImage}
+                style={{
+                  backgroundColor: palette.accent,
+                  paddingVertical: 14,
+                  borderRadius: 16,
+                  shadowColor: palette.accentDark,
+                  shadowOpacity: 0.18,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: 2,
+                }}
               >
-                {loading ? "Estimating..." : "Estimate distance"}
+                <Text
+                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
+                >
+                  {imageUri ? "Choose a different image" : "Choose image"}
+                </Text>
+              </Pressable>
+
+              {imageUri ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <View
+                    style={{
+                      backgroundColor: palette.accentSoft,
+                      borderRadius: 999,
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: palette.accentDark,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {imageWidth} x {imageHeight}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              <ImageMeasurement
+                imageUri={imageUri}
+                imageWidth={imageWidth}
+                imageHeight={imageHeight}
+                points={points}
+                onAddPoint={handleAddPoint}
+                onClearPoints={handleClearPoints}
+              />
+            </View>
+
+            <View
+              style={{
+                backgroundColor: palette.surface,
+                borderRadius: 24,
+                padding: 18,
+                borderWidth: 1,
+                borderColor: palette.border,
+                gap: 10,
+              }}
+            >
+              <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
+                Estimation Inputs
               </Text>
-            </Pressable>
-          </View>
+              <Text style={{ color: palette.muted, fontSize: 13 }}>
+                Estimation uses a saved calibration preset, so users don't have to type focal length values manually.
+              </Text>
+
+              <Text
+                style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
+              >
+                Real object height (cm)
+              </Text>
+              <TextInput
+                value={realObjectHeightCm}
+                onChangeText={setRealObjectHeightCm}
+                keyboardType="decimal-pad"
+                style={{
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  backgroundColor: palette.surfaceStrong,
+                  color: palette.text,
+                }}
+              />
+
+              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>
+                Calibration preset
+              </Text>
+              <ProfileDropdown
+                palette={palette}
+                profiles={profiles}
+                selectedProfile={selectedProfile}
+                selectedFocalLength={focalLengthPixels}
+                open={profileDropdownOpen}
+                emptyMessage="Choose a saved calibration profile to enable estimating."
+                onToggle={() => setProfileDropdownOpen((current) => !current)}
+                onSelect={handleUseProfile}
+              />
+
+              <Pressable
+                onPress={handleEstimateSubmit}
+                disabled={loading || !selectedProfile}
+                style={{
+                  backgroundColor:
+                    loading || !selectedProfile ? palette.accentDark : palette.accent,
+                  paddingVertical: 14,
+                  borderRadius: 16,
+                  marginTop: 6,
+                  opacity: loading || !selectedProfile ? 0.72 : 1,
+                }}
+              >
+                <Text
+                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
+                >
+                  {loading ? "Estimating..." : "Estimate distance"}
+                </Text>
+              </Pressable>
+            </View>
           </>
         ) : screen === "golf" ? (
           <>
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: 24,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: palette.border,
-              gap: 12,
-            }}
-          >
-            <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-              Golf Mode
-            </Text>
-            <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
-              Golf mode assumes a standard 2.13 metre golf flag. Mark the flag manually to estimate distance from the photo.
-            </Text>
-          </View>
-
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: 24,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: palette.border,
-              gap: 14,
-            }}
-          >
-            <View style={{ gap: 4 }}>
-              <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-                Golf Photo
-              </Text>
-              <Text style={{ color: palette.muted, fontSize: 13 }}>
-                Choose a photo of the pin, then tap the top and bottom of the flag.
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={pickImage}
+            <View
               style={{
-                backgroundColor: palette.accent,
-                paddingVertical: 14,
-                borderRadius: 16,
-                shadowColor: palette.accentDark,
-                shadowOpacity: 0.18,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 4 },
-                elevation: 2,
+                backgroundColor: palette.surface,
+                borderRadius: 24,
+                padding: 18,
+                borderWidth: 1,
+                borderColor: palette.border,
+                gap: 12,
               }}
             >
-              <Text
-                style={{ color: "white", textAlign: "center", fontWeight: "700" }}
-              >
-                {imageUri ? "Choose a different image" : "Choose image"}
+              <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
+                Golf Mode
               </Text>
-            </Pressable>
-
-            {imageUri ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  gap: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                <View
-                  style={{
-                    backgroundColor: palette.accentSoft,
-                    borderRadius: 999,
-                    paddingHorizontal: 12,
-                    paddingVertical: 7,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: palette.accentDark,
-                      fontSize: 12,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {imageWidth} x {imageHeight}
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-
-            <ImageMeasurement
-              imageUri={imageUri}
-              imageWidth={imageWidth}
-              imageHeight={imageHeight}
-              points={points}
-              onAddPoint={handleAddPoint}
-              onClearPoints={handleClearPoints}
-            />
-          </View>
-
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: 24,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: palette.border,
-              gap: 10,
-            }}
-          >
-            <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-              Golf Inputs
-            </Text>
-            <Text style={{ color: palette.muted, fontSize: 13 }}>
-              Golf mode always uses a 2.13 m flag height. Choose a saved calibration preset and mark the golf flag on the photo.
-            </Text>
-
-            <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>
-              Calibration preset
-            </Text>
-            <ProfileDropdown
-              palette={palette}
-              profiles={profiles}
-              selectedProfile={selectedProfile}
-              selectedFocalLength={focalLengthPixels}
-              open={profileDropdownOpen}
-              emptyMessage="Choose a saved calibration profile to enable Golf mode."
-              onToggle={() => setProfileDropdownOpen((current) => !current)}
-              onSelect={handleUseProfile}
-            />
+              <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
+                Golf mode assumes a standard 2.13 metre golf flag. Mark the flag manually to estimate distance from the photo.
+              </Text>
+            </View>
 
             <View
               style={{
+                backgroundColor: palette.surface,
+                borderRadius: 24,
+                padding: 18,
                 borderWidth: 1,
                 borderColor: palette.border,
-                borderRadius: 14,
-                paddingHorizontal: 12,
-                paddingVertical: 14,
-                backgroundColor: palette.surfaceStrong,
-                gap: 4,
+                gap: 14,
               }}
             >
-              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>
-                Assumed target
-              </Text>
-              <Text style={{ color: palette.text, fontWeight: "700" }}>
-                Golf flag
-              </Text>
-              <Text style={{ color: palette.muted, fontSize: 12 }}>
-                Fixed height: 2.13 metres
-              </Text>
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
+                  Golf Photo
+                </Text>
+                <Text style={{ color: palette.muted, fontSize: 13 }}>
+                  Choose a photo of the pin, then tap the top and bottom of the flag.
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={pickImage}
+                style={{
+                  backgroundColor: palette.accent,
+                  paddingVertical: 14,
+                  borderRadius: 16,
+                  shadowColor: palette.accentDark,
+                  shadowOpacity: 0.18,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: 2,
+                }}
+              >
+                <Text
+                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
+                >
+                  {imageUri ? "Choose a different image" : "Choose image"}
+                </Text>
+              </Pressable>
+
+              {imageUri ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <View
+                    style={{
+                      backgroundColor: palette.accentSoft,
+                      borderRadius: 999,
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: palette.accentDark,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {imageWidth} x {imageHeight}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              <ImageMeasurement
+                imageUri={imageUri}
+                imageWidth={imageWidth}
+                imageHeight={imageHeight}
+                points={points}
+                onAddPoint={handleAddPoint}
+                onClearPoints={handleClearPoints}
+              />
             </View>
 
-            <Pressable
-              onPress={handleGolfEstimateSubmit}
-              disabled={loading || !selectedProfile}
+            <View
               style={{
-                backgroundColor:
-                  loading || !selectedProfile ? palette.accentDark : palette.accent,
-                paddingVertical: 14,
-                borderRadius: 16,
-                marginTop: 6,
-                opacity: loading || !selectedProfile ? 0.72 : 1,
+                backgroundColor: palette.surface,
+                borderRadius: 24,
+                padding: 18,
+                borderWidth: 1,
+                borderColor: palette.border,
+                gap: 10,
               }}
             >
-              <Text
-                style={{ color: "white", textAlign: "center", fontWeight: "700" }}
-              >
-                {loading ? "Estimating..." : "Estimate golf distance"}
+              <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
+                Golf Inputs
               </Text>
-            </Pressable>
-          </View>
+              <Text style={{ color: palette.muted, fontSize: 13 }}>
+                Golf mode always uses a 2.13 m flag height. Choose a saved calibration preset and mark the golf flag on the photo.
+              </Text>
+
+              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>
+                Calibration preset
+              </Text>
+              <ProfileDropdown
+                palette={palette}
+                profiles={profiles}
+                selectedProfile={selectedProfile}
+                selectedFocalLength={focalLengthPixels}
+                open={profileDropdownOpen}
+                emptyMessage="Choose a saved calibration profile to enable Golf mode."
+                onToggle={() => setProfileDropdownOpen((current) => !current)}
+                onSelect={handleUseProfile}
+              />
+
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 14,
+                  backgroundColor: palette.surfaceStrong,
+                  gap: 4,
+                }}
+              >
+                <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>
+                  Assumed target
+                </Text>
+                <Text style={{ color: palette.text, fontWeight: "700" }}>
+                  Golf flag
+                </Text>
+                <Text style={{ color: palette.muted, fontSize: 12 }}>
+                  Fixed height: 2.13 metres
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={handleGolfEstimateSubmit}
+                disabled={loading || !selectedProfile}
+                style={{
+                  backgroundColor:
+                    loading || !selectedProfile ? palette.accentDark : palette.accent,
+                  paddingVertical: 14,
+                  borderRadius: 16,
+                  marginTop: 6,
+                  opacity: loading || !selectedProfile ? 0.72 : 1,
+                }}
+              >
+                <Text
+                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
+                >
+                  {loading ? "Estimating..." : "Estimate golf distance"}
+                </Text>
+              </Pressable>
+            </View>
           </>
         ) : (
           <>
-          <View
-            style={{
-              backgroundColor: palette.surfaceStrong,
-              borderRadius: 28,
-              padding: 20,
-              borderWidth: 1,
-              borderColor: palette.border,
-              gap: 10,
-              shadowColor: palette.shadow,
-              shadowOpacity: 1,
-              shadowRadius: 18,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 2,
-            }}
-          >
-            <Pressable
-              onPress={() => setScreen("estimate")}
-              style={{
-                alignSelf: "flex-start",
-                backgroundColor: "#efe7da",
-                borderRadius: 999,
-                paddingHorizontal: 14,
-                paddingVertical: 9,
-              }}
-            >
-              <Text style={{ color: palette.text, fontWeight: "700" }}>
-                Back to estimate
-              </Text>
-            </Pressable>
-            <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-              Calibration Setup
-            </Text>
-            <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
-              Calibration is an occasional setup step. Use a photo with a known object size and distance, then save the resulting focal length for later.
-            </Text>
             <View
               style={{
-                backgroundColor: palette.accentSoft,
-                borderRadius: 16,
-                padding: 14,
-                gap: 6,
+                backgroundColor: palette.surfaceStrong,
+                borderRadius: 28,
+                padding: 20,
+                borderWidth: 1,
+                borderColor: palette.border,
+                gap: 10,
+                shadowColor: palette.shadow,
+                shadowOpacity: 1,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 2,
               }}
             >
-              <Text style={{ color: palette.accentDark, fontWeight: "800", fontSize: 12 }}>
-                One-time workflow
-              </Text>
-              <Text style={{ color: palette.text, lineHeight: 20 }}>
-                Most people only do this once per device or zoom level, then return to the estimate page for day-to-day use.
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: 24,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: palette.border,
-              gap: 14,
-            }}
-          >
-            <View style={{ gap: 4 }}>
+              <Pressable
+                onPress={() => setScreen("estimate")}
+                style={{
+                  alignSelf: "flex-start",
+                  backgroundColor: "#efe7da",
+                  borderRadius: 999,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                }}
+              >
+                <Text style={{ color: palette.text, fontWeight: "700" }}>
+                  Back to estimate
+                </Text>
+              </Pressable>
               <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-                Calibration Photo
+                Calibration Setup
+              </Text>
+              <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
+                Calibration is an occasional setup step. Use a photo with a known object size and distance, then save the resulting focal length for later.
+              </Text>
+              <View
+                style={{
+                  backgroundColor: palette.accentSoft,
+                  borderRadius: 16,
+                  padding: 14,
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: palette.accentDark, fontWeight: "800", fontSize: 12 }}>
+                  One-time workflow
+                </Text>
+                <Text style={{ color: palette.text, lineHeight: 20 }}>
+                  Most people only do this once per device or zoom level, then return to the estimate page for day-to-day use.
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{
+                backgroundColor: palette.surface,
+                borderRadius: 24,
+                padding: 18,
+                borderWidth: 1,
+                borderColor: palette.border,
+                gap: 14,
+              }}
+            >
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
+                  Calibration Photo
+                </Text>
+                <Text style={{ color: palette.muted, fontSize: 13 }}>
+                  Choose a reference image and mark the same object from top to bottom.
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={pickImage}
+                style={{
+                  backgroundColor: palette.accent,
+                  paddingVertical: 14,
+                  borderRadius: 16,
+                }}
+              >
+                <Text
+                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
+                >
+                  {imageUri ? "Choose a different image" : "Choose image"}
+                </Text>
+              </Pressable>
+
+              <ImageMeasurement
+                imageUri={imageUri}
+                imageWidth={imageWidth}
+                imageHeight={imageHeight}
+                points={points}
+                onAddPoint={handleAddPoint}
+                onClearPoints={handleClearPoints}
+              />
+            </View>
+
+            <View
+              style={{
+                backgroundColor: palette.surface,
+                borderRadius: 24,
+                padding: 18,
+                borderWidth: 1,
+                borderColor: palette.border,
+                gap: 10,
+              }}
+            >
+              <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
+                Calibration Inputs
               </Text>
               <Text style={{ color: palette.muted, fontSize: 13 }}>
-                Choose a reference image and mark the same object from top to bottom.
+                Enter the real-world dimensions for the reference shot, then save the result as a reusable profile.
               </Text>
+
+              <Text
+                style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
+              >
+                Real object height (cm)
+              </Text>
+              <TextInput
+                value={realObjectHeightCm}
+                onChangeText={setRealObjectHeightCm}
+                keyboardType="decimal-pad"
+                style={{
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  backgroundColor: palette.surfaceStrong,
+                  color: palette.text,
+                }}
+              />
+
+              <Text
+                style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
+              >
+                Known distance (cm)
+              </Text>
+              <TextInput
+                value={knownDistanceCm}
+                onChangeText={setKnownDistanceCm}
+                keyboardType="decimal-pad"
+                style={{
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  backgroundColor: palette.surfaceStrong,
+                  color: palette.text,
+                }}
+              />
+
+              <Text
+                style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
+              >
+                Profile name
+              </Text>
+              <TextInput
+                value={profileName}
+                onChangeText={setProfileName}
+                style={{
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  backgroundColor: palette.surfaceStrong,
+                  color: palette.text,
+                }}
+              />
+
+              <Pressable
+                onPress={handleCalibrationSubmit}
+                disabled={loading}
+                style={{
+                  backgroundColor: loading ? palette.accentDark : palette.accent,
+                  paddingVertical: 14,
+                  borderRadius: 16,
+                  marginTop: 6,
+                }}
+              >
+                <Text
+                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
+                >
+                  {loading ? "Calibrating..." : "Calibrate focal length"}
+                </Text>
+              </Pressable>
             </View>
-
-            <Pressable
-              onPress={pickImage}
-              style={{
-                backgroundColor: palette.accent,
-                paddingVertical: 14,
-                borderRadius: 16,
-              }}
-            >
-              <Text
-                style={{ color: "white", textAlign: "center", fontWeight: "700" }}
-              >
-                {imageUri ? "Choose a different image" : "Choose image"}
-              </Text>
-            </Pressable>
-
-            <ImageMeasurement
-              imageUri={imageUri}
-              imageWidth={imageWidth}
-              imageHeight={imageHeight}
-              points={points}
-              onAddPoint={handleAddPoint}
-              onClearPoints={handleClearPoints}
-            />
-          </View>
-
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: 24,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: palette.border,
-              gap: 10,
-            }}
-          >
-            <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-              Calibration Inputs
-            </Text>
-            <Text style={{ color: palette.muted, fontSize: 13 }}>
-              Enter the real-world dimensions for the reference shot, then save the result as a reusable profile.
-            </Text>
-
-            <Text
-              style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
-            >
-              Real object height (cm)
-            </Text>
-            <TextInput
-              value={realObjectHeightCm}
-              onChangeText={setRealObjectHeightCm}
-              keyboardType="decimal-pad"
-              style={{
-                borderWidth: 1,
-                borderColor: palette.border,
-                borderRadius: 14,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
-                backgroundColor: palette.surfaceStrong,
-                color: palette.text,
-              }}
-            />
-
-            <Text
-              style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
-            >
-              Known distance (cm)
-            </Text>
-            <TextInput
-              value={knownDistanceCm}
-              onChangeText={setKnownDistanceCm}
-              keyboardType="decimal-pad"
-              style={{
-                borderWidth: 1,
-                borderColor: palette.border,
-                borderRadius: 14,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
-                backgroundColor: palette.surfaceStrong,
-                color: palette.text,
-              }}
-            />
-
-            <Text
-              style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
-            >
-              Profile name
-            </Text>
-            <TextInput
-              value={profileName}
-              onChangeText={setProfileName}
-              style={{
-                borderWidth: 1,
-                borderColor: palette.border,
-                borderRadius: 14,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
-                backgroundColor: palette.surfaceStrong,
-                color: palette.text,
-              }}
-            />
-
-            <Pressable
-              onPress={handleCalibrationSubmit}
-              disabled={loading}
-              style={{
-                backgroundColor: loading ? palette.accentDark : palette.accent,
-                paddingVertical: 14,
-                borderRadius: 16,
-                marginTop: 6,
-              }}
-            >
-              <Text
-                style={{ color: "white", textAlign: "center", fontWeight: "700" }}
-              >
-                {loading ? "Calibrating..." : "Calibrate focal length"}
-              </Text>
-            </Pressable>
-          </View>
           </>
         )}
 

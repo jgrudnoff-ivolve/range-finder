@@ -7,8 +7,21 @@
     "userInterfaceStyle": "light",
     "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+		"infoPlist": {
+        "NSCameraUsageDescription": "Allow camera access so you can take a photo for distance measurement.",
+        "NSPhotoLibraryUsageDescription": "Allow photo library access so you can choose an image for distance measurement."
+      }
     },
+	"plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow access to your photos so you can choose an image for distance measurement.",
+          "cameraPermission": "Allow camera access so you can take a photo for distance measurement."
+        }
+      ]
+    ],
     "android": {},
     "web": {
       "bundler": "metro"
