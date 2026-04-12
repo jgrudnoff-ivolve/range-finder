@@ -893,9 +893,6 @@ export default function App() {
           <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
             Result
           </Text>
-          <Text style={{ color: palette.muted, fontSize: 13 }}>
-            Clear, readable output for the most recent calculation.
-          </Text>
           <ResultSummary result={result} />
         </View>
       </ScrollView>

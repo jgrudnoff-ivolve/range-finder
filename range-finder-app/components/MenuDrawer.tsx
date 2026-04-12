@@ -68,9 +68,6 @@ export function MenuDrawer({ palette, screen, open, onClose, onNavigate }: Props
           <Text style={{ color: palette.text, fontSize: 24, fontWeight: "800" }}>
             Menu
           </Text>
-          <Text style={{ color: palette.muted, lineHeight: 20 }}>
-            Estimation is the everyday tool. Calibration stays available here when needed.
-          </Text>
         </View>
 
         <Pressable
