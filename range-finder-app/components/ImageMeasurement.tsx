@@ -2,7 +2,9 @@ import React, { useState } from "react";
 import {
   GestureResponderEvent,
   Image,
+  Modal,
   Pressable,
+  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -26,17 +28,28 @@ export function ImageMeasurement({
   onClearPoints,
 }: Props) {
   const [containerWidth, setContainerWidth] = useState(320);
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [zoomScale, setZoomScale] = useState(2);
+  const markerSize = 10;
+  const markerRadius = markerSize / 2;
 
   const displayWidth = Math.max(1, containerWidth);
   const displayHeight =
     imageWidth > 0 ? displayWidth * (imageHeight / imageWidth) : 320;
+  const selectorWidth = Math.max(displayWidth * zoomScale, displayWidth);
+  const selectorHeight =
+    imageWidth > 0 ? selectorWidth * (imageHeight / imageWidth) : displayHeight * zoomScale;
 
-  const handleImagePress = (event: GestureResponderEvent) => {
+  const handleImagePress = (
+    event: GestureResponderEvent,
+    targetWidth: number,
+    targetHeight: number
+  ) => {
     if (!imageUri || imageWidth <= 0 || imageHeight <= 0) return;
 
     const { locationX, locationY } = event.nativeEvent;
-    const scaleX = imageWidth / displayWidth;
-    const scaleY = imageHeight / displayHeight;
+    const scaleX = imageWidth / targetWidth;
+    const scaleY = imageHeight / targetHeight;
 
     const rawX = Math.round(locationX * scaleX);
     const rawY = Math.round(locationY * scaleY);
@@ -66,6 +79,86 @@ export function ImageMeasurement({
   const lineTop =
     points.length === 2 ? (p1y + p2y) / 2 - lineThickness / 2 : 0;
 
+  function renderMeasurementCanvas(targetWidth: number, targetHeight: number, interactive: boolean) {
+    const scaledP1x = point1 ? (point1.x / imageWidth) * targetWidth : 0;
+    const scaledP1y = point1 ? (point1.y / imageHeight) * targetHeight : 0;
+    const scaledP2x = point2 ? (point2.x / imageWidth) * targetWidth : 0;
+    const scaledP2y = point2 ? (point2.y / imageHeight) * targetHeight : 0;
+    const scaledLineWidth =
+      points.length === 2 ? Math.hypot(scaledP2x - scaledP1x, scaledP2y - scaledP1y) : 0;
+    const scaledLineAngle =
+      points.length === 2 ? Math.atan2(scaledP2y - scaledP1y, scaledP2x - scaledP1x) : 0;
+    const scaledLineLeft =
+      points.length === 2 ? (scaledP1x + scaledP2x) / 2 - scaledLineWidth / 2 : 0;
+    const scaledLineTop =
+      points.length === 2 ? (scaledP1y + scaledP2y) / 2 - lineThickness / 2 : 0;
+
+    return (
+      <View
+        onStartShouldSetResponder={() => interactive}
+        onResponderRelease={
+          interactive
+            ? (event) => handleImagePress(event, targetWidth, targetHeight)
+            : undefined
+        }
+        style={{
+          width: targetWidth,
+          height: targetHeight,
+          alignSelf: "center",
+          overflow: "hidden",
+          borderRadius: interactive ? 0 : 16,
+          borderWidth: 1,
+          borderColor: "#bfb29b",
+          backgroundColor: "#fff",
+        }}
+      >
+        <Image
+          source={{ uri: imageUri! }}
+          style={{ width: targetWidth, height: targetHeight }}
+          resizeMode="contain"
+        />
+
+        {points.map((point, index) => {
+          const left = (point.x / imageWidth) * targetWidth - markerRadius;
+          const top = (point.y / imageHeight) * targetHeight - markerRadius;
+
+          return (
+            <View
+              key={`${point.x}-${point.y}-${index}`}
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                left,
+                top,
+                width: markerSize,
+                height: markerSize,
+                borderRadius: markerRadius,
+                borderWidth: 1.5,
+                borderColor: "white",
+                backgroundColor: index === 0 ? "#2f855a" : "#c05621",
+              }}
+            />
+          );
+        })}
+
+        {points.length === 2 && (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: scaledLineLeft,
+              top: scaledLineTop,
+              width: scaledLineWidth,
+              height: lineThickness,
+              backgroundColor: "#c05621",
+              transform: [{ rotate: `${scaledLineAngle}rad` }],
+            }}
+          />
+        )}
+      </View>
+    );
+  }
+
   return (
     <View
       style={{
@@ -76,13 +169,6 @@ export function ImageMeasurement({
         borderColor: "#d8cfbf",
       }}
     >
-      <Text style={{ fontWeight: "700", marginBottom: 4, color: "#1f1a14", fontSize: 17 }}>
-        Measurement
-      </Text>
-      <Text style={{ color: "#6f665b", fontSize: 13, marginBottom: 12, lineHeight: 18 }}>
-        Keep the current two-tap flow, but make it easier to read: first tap the top of the object, then tap the bottom.
-      </Text>
-
       {imageUri ? (
         <>
           <View
@@ -97,64 +183,14 @@ export function ImageMeasurement({
               alignSelf: "center",
             }}
           >
-            <View
-              onStartShouldSetResponder={() => true}
-              onResponderRelease={handleImagePress}
+            <Pressable
+              onPress={() => setSelectorOpen(true)}
               style={{
-                width: displayWidth,
-                height: displayHeight,
                 alignSelf: "center",
-                overflow: "hidden",
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: "#bfb29b",
-                backgroundColor: "#fff",
               }}
             >
-              <Image
-                source={{ uri: imageUri }}
-                style={{ width: displayWidth, height: displayHeight }}
-                resizeMode="contain"
-              />
-
-              {points.map((point, index) => {
-                const left = (point.x / imageWidth) * displayWidth - 8;
-                const top = (point.y / imageHeight) * displayHeight - 8;
-
-                return (
-                  <View
-                    key={`${point.x}-${point.y}-${index}`}
-                    pointerEvents="none"
-                    style={{
-                      position: "absolute",
-                      left,
-                      top,
-                      width: 16,
-                      height: 16,
-                      borderRadius: 8,
-                      borderWidth: 2,
-                      borderColor: "white",
-                      backgroundColor: index === 0 ? "#2f855a" : "#c05621",
-                    }}
-                  />
-                );
-              })}
-
-              {points.length === 2 && (
-                <View
-                  pointerEvents="none"
-                  style={{
-                    position: "absolute",
-                    left: lineLeft,
-                    top: lineTop,
-                    width: lineWidth,
-                    height: lineThickness,
-                    backgroundColor: "#c05621",
-                    transform: [{ rotate: `${lineAngle}rad` }],
-                  }}
-                />
-              )}
-            </View>
+              {renderMeasurementCanvas(displayWidth, displayHeight, false)}
+            </Pressable>
           </View>
 
           <Text
@@ -166,7 +202,7 @@ export function ImageMeasurement({
               lineHeight: 18,
             }}
           >
-            Tap once for the top point, then once for the bottom point. A fresh tap after two points starts a new measurement.
+            Tap the image to open precision selection. In the selector, zoom in, pan, and place the top and bottom points more accurately.
           </Text>
 
           <Pressable
@@ -182,6 +218,107 @@ export function ImageMeasurement({
               Clear points
             </Text>
           </Pressable>
+
+          <Modal
+            visible={selectorOpen}
+            animationType="slide"
+            onRequestClose={() => setSelectorOpen(false)}
+          >
+            <View style={{ flex: 1, backgroundColor: "#16130f" }}>
+              <View
+                style={{
+                  paddingHorizontal: 16,
+                  paddingTop: 18,
+                  paddingBottom: 14,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "rgba(255, 255, 255, 0.12)",
+                  backgroundColor: "rgba(22, 19, 15, 0.92)",
+                  gap: 12,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: "800", color: "#ffffff", fontSize: 18 }}>
+                      Precision Selection
+                    </Text>
+                    <Text style={{ color: "rgba(255, 255, 255, 0.72)", marginTop: 4, lineHeight: 18 }}>
+                      Zoom in, drag to the target, then tap the top and bottom points.
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => setSelectorOpen(false)}
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.14)",
+                      borderRadius: 14,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text style={{ color: "#ffffff", fontWeight: "700" }}>Done</Text>
+                  </Pressable>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Pressable
+                    onPress={() => setZoomScale((current) => Math.max(1.5, current - 0.5))}
+                    style={{
+                      flex: 1,
+                      backgroundColor: "rgba(255, 255, 255, 0.14)",
+                      borderRadius: 12,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text style={{ textAlign: "center", color: "#ffffff", fontWeight: "700" }}>
+                      Zoom out
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setZoomScale((current) => Math.min(5, current + 0.5))}
+                    style={{
+                      flex: 1,
+                      backgroundColor: "#c56238",
+                      borderRadius: 12,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text style={{ textAlign: "center", color: "white", fontWeight: "700" }}>
+                      Zoom in
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <ScrollView
+                  maximumZoomScale={5}
+                  minimumZoomScale={1}
+                  contentContainerStyle={{
+                    flexGrow: 1,
+                    justifyContent: "center",
+                  }}
+                >
+                  <ScrollView
+                    horizontal
+                    contentContainerStyle={{
+                      minWidth: "100%",
+                      minHeight: "100%",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                  {renderMeasurementCanvas(selectorWidth, selectorHeight, true)}
+                  </ScrollView>
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
         </>
       ) : (
         <View
