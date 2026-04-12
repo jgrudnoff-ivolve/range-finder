@@ -69,9 +69,6 @@ export function AppHero({ palette, screen, onOpenMenu }: Props) {
           >
             Range Finder
           </Text>
-          <Text style={{ color: palette.muted, lineHeight: 20 }}>
-            Calibrate once per device and zoom level, then estimate distance from photos.
-          </Text>
         </View>
 
         <Pressable
