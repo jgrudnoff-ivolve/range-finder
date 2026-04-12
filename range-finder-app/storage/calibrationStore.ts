@@ -2,15 +2,44 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CalibrationProfile } from "../types";
 
 const STORAGE_KEY = "range_finder_calibration_profiles";
+const DEFAULT_PROFILES: CalibrationProfile[] = [
+  {
+    id: "default-1x",
+    name: "Rear Camera 1x Zoom (Default)",
+    focalLengthPixels: 2900,
+  },
+  {
+    id: "default-3x",
+    name: "Rear Camera 3x Zoom (Default)",
+    focalLengthPixels: 7800,
+  },
+];
 
 export async function getCalibrationProfiles(): Promise<CalibrationProfile[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (!raw) return [];
+  if (!raw) {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_PROFILES));
+    return DEFAULT_PROFILES;
+  }
 
   try {
-    return JSON.parse(raw) as CalibrationProfile[];
+    const storedProfiles = JSON.parse(raw) as CalibrationProfile[];
+    const mergedProfiles = [...storedProfiles];
+
+    for (const defaultProfile of DEFAULT_PROFILES) {
+      if (!mergedProfiles.some((profile) => profile.id === defaultProfile.id)) {
+        mergedProfiles.unshift(defaultProfile);
+      }
+    }
+
+    if (mergedProfiles.length !== storedProfiles.length) {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(mergedProfiles));
+    }
+
+    return mergedProfiles;
   } catch {
-    return [];
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_PROFILES));
+    return DEFAULT_PROFILES;
   }
 }
 
