@@ -2,7 +2,7 @@ import math
 from dataclasses import dataclass
 
 MIN_LINE_PIXELS = 20
-GOLF_FLAG_HEIGHT_CM = 220.0
+GOLF_FLAG_HEIGHT_CM = 213.0
 
 
 class ServiceValidationError(ValueError):

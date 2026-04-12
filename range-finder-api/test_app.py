@@ -54,5 +54,5 @@ def test_estimate_golf():
     assert r.status_code == 200
     data = r.json()
     assert data["distance_cm"] > 0
-    assert data["assumed_object_height_cm"] == 220.0
+    assert data["assumed_object_height_cm"] == 213.0
     assert data["object_height_pixels"] > 0

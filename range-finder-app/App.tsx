@@ -458,7 +458,7 @@ export default function App() {
               Golf Mode
             </Text>
             <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
-              Golf mode assumes a standard 2.2 metre golf flag. Mark the flag manually to estimate distance from the photo.
+              Golf mode assumes a standard 2.13 metre golf flag. Mark the flag manually to estimate distance from the photo.
             </Text>
           </View>
 
@@ -554,7 +554,7 @@ export default function App() {
               Golf Inputs
             </Text>
             <Text style={{ color: palette.muted, fontSize: 13 }}>
-              Golf mode always uses a 2.2 m flag height. Choose a saved calibration preset and mark the golf flag on the photo.
+              Golf mode always uses a 2.13 m flag height. Choose a saved calibration preset and mark the golf flag on the photo.
             </Text>
 
             <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>
@@ -589,7 +589,7 @@ export default function App() {
                 Golf flag
               </Text>
               <Text style={{ color: palette.muted, fontSize: 12 }}>
-                Fixed height: 2.2 metres
+                Fixed height: 2.13 metres
               </Text>
             </View>
 

@@ -108,7 +108,7 @@ export function MenuDrawer({ palette, screen, open, onClose, onNavigate }: Props
             Golf
           </Text>
           <Text style={{ color: palette.muted, lineHeight: 20 }}>
-            Mark the flag manually, use a fixed 2.2 m target height, and estimate distance quickly.
+            Mark the flag manually, use a fixed 2.13 m target height, and estimate distance quickly.
           </Text>
         </Pressable>
 

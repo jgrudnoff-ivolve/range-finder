@@ -30,5 +30,5 @@ def test_estimate_golf_distance():
     )
 
     assert result["distance_cm"] > 0
-    assert result["assumed_object_height_cm"] == 220.0
+    assert result["assumed_object_height_cm"] == 213.0
     assert result["object_height_pixels"] > 0
