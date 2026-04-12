@@ -27,18 +27,34 @@ export function ImageMeasurement({
   onAddPoint,
   onClearPoints,
 }: Props) {
-  const [containerWidth, setContainerWidth] = useState(320);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [zoomScale, setZoomScale] = useState(2);
+
   const markerSize = 10;
   const markerRadius = markerSize / 2;
+  const lineThickness = 2;
 
-  const displayWidth = Math.max(1, containerWidth);
-  const displayHeight =
-    imageWidth > 0 ? displayWidth * (imageHeight / imageWidth) : 320;
+  const previewMaxWidth = 600;
+  const previewMaxHeight = 420;
+
+  let displayWidth = previewMaxWidth;
+  let displayHeight = 320;
+
+  if (imageWidth > 0 && imageHeight > 0) {
+    const scale = Math.min(
+      previewMaxWidth / imageWidth,
+      previewMaxHeight / imageHeight
+    );
+
+    displayWidth = Math.max(1, Math.round(imageWidth * scale));
+    displayHeight = Math.max(1, Math.round(imageHeight * scale));
+  }
+
   const selectorWidth = Math.max(displayWidth * zoomScale, displayWidth);
   const selectorHeight =
-    imageWidth > 0 ? selectorWidth * (imageHeight / imageWidth) : displayHeight * zoomScale;
+    imageWidth > 0
+      ? selectorWidth * (imageHeight / imageWidth)
+      : displayHeight * zoomScale;
 
   const handleImagePress = (
     event: GestureResponderEvent,
@@ -63,35 +79,35 @@ export function ImageMeasurement({
   const point1 = points[0];
   const point2 = points[1];
 
-  const p1x = point1 ? (point1.x / imageWidth) * displayWidth : 0;
-  const p1y = point1 ? (point1.y / imageHeight) * displayHeight : 0;
-  const p2x = point2 ? (point2.x / imageWidth) * displayWidth : 0;
-  const p2y = point2 ? (point2.y / imageHeight) * displayHeight : 0;
-
-  const lineWidth =
-    points.length === 2 ? Math.hypot(p2x - p1x, p2y - p1y) : 0;
-  const lineThickness = 2;
-
-  const lineAngle =
-    points.length === 2 ? Math.atan2(p2y - p1y, p2x - p1x) : 0;
-
-  const lineLeft = points.length === 2 ? (p1x + p2x) / 2 - lineWidth / 2 : 0;
-  const lineTop =
-    points.length === 2 ? (p1y + p2y) / 2 - lineThickness / 2 : 0;
-
-  function renderMeasurementCanvas(targetWidth: number, targetHeight: number, interactive: boolean) {
+  function renderMeasurementCanvas(
+    targetWidth: number,
+    targetHeight: number,
+    interactive: boolean
+  ) {
     const scaledP1x = point1 ? (point1.x / imageWidth) * targetWidth : 0;
     const scaledP1y = point1 ? (point1.y / imageHeight) * targetHeight : 0;
     const scaledP2x = point2 ? (point2.x / imageWidth) * targetWidth : 0;
     const scaledP2y = point2 ? (point2.y / imageHeight) * targetHeight : 0;
+
     const scaledLineWidth =
-      points.length === 2 ? Math.hypot(scaledP2x - scaledP1x, scaledP2y - scaledP1y) : 0;
+      points.length === 2
+        ? Math.hypot(scaledP2x - scaledP1x, scaledP2y - scaledP1y)
+        : 0;
+
     const scaledLineAngle =
-      points.length === 2 ? Math.atan2(scaledP2y - scaledP1y, scaledP2x - scaledP1x) : 0;
+      points.length === 2
+        ? Math.atan2(scaledP2y - scaledP1y, scaledP2x - scaledP1x)
+        : 0;
+
     const scaledLineLeft =
-      points.length === 2 ? (scaledP1x + scaledP2x) / 2 - scaledLineWidth / 2 : 0;
+      points.length === 2
+        ? (scaledP1x + scaledP2x) / 2 - scaledLineWidth / 2
+        : 0;
+
     const scaledLineTop =
-      points.length === 2 ? (scaledP1y + scaledP2y) / 2 - lineThickness / 2 : 0;
+      points.length === 2
+        ? (scaledP1y + scaledP2y) / 2 - lineThickness / 2
+        : 0;
 
     return (
       <View
@@ -167,20 +183,17 @@ export function ImageMeasurement({
         padding: 16,
         borderWidth: 1,
         borderColor: "#d8cfbf",
+        overflow: "hidden",
       }}
     >
       {imageUri ? (
         <>
           <View
-            onLayout={(event) => {
-              const nextWidth = Math.floor(event.nativeEvent.layout.width);
-              if (nextWidth > 0 && nextWidth !== containerWidth) {
-                setContainerWidth(nextWidth);
-              }
-            }}
             style={{
               width: "100%",
+              maxWidth: previewMaxWidth,
               alignSelf: "center",
+              overflow: "hidden",
             }}
           >
             <Pressable
@@ -202,7 +215,8 @@ export function ImageMeasurement({
               lineHeight: 18,
             }}
           >
-            Tap the image to open precision selection. In the selector, zoom in, pan, and place the top and bottom points more accurately.
+            Tap the image to open precision selection. In the selector, zoom in,
+            pan, and place the top and bottom points more accurately.
           </Text>
 
           <Pressable
@@ -214,7 +228,13 @@ export function ImageMeasurement({
               borderRadius: 14,
             }}
           >
-            <Text style={{ textAlign: "center", fontWeight: "700", color: "#1f1a14" }}>
+            <Text
+              style={{
+                textAlign: "center",
+                fontWeight: "700",
+                color: "#1f1a14",
+              }}
+            >
               Clear points
             </Text>
           </Pressable>
@@ -245,11 +265,24 @@ export function ImageMeasurement({
                   }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: "800", color: "#ffffff", fontSize: 18 }}>
+                    <Text
+                      style={{
+                        fontWeight: "800",
+                        color: "#ffffff",
+                        fontSize: 18,
+                      }}
+                    >
                       Precision Selection
                     </Text>
-                    <Text style={{ color: "rgba(255, 255, 255, 0.72)", marginTop: 4, lineHeight: 18 }}>
-                      Zoom in, drag to the target, then tap the top and bottom points.
+                    <Text
+                      style={{
+                        color: "rgba(255, 255, 255, 0.72)",
+                        marginTop: 4,
+                        lineHeight: 18,
+                      }}
+                    >
+                      Zoom in, drag to the target, then tap the top and bottom
+                      points.
                     </Text>
                   </View>
                   <Pressable
@@ -261,13 +294,17 @@ export function ImageMeasurement({
                       paddingVertical: 10,
                     }}
                   >
-                    <Text style={{ color: "#ffffff", fontWeight: "700" }}>Done</Text>
+                    <Text style={{ color: "#ffffff", fontWeight: "700" }}>
+                      Done
+                    </Text>
                   </Pressable>
                 </View>
 
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <Pressable
-                    onPress={() => setZoomScale((current) => Math.max(1.5, current - 0.5))}
+                    onPress={() =>
+                      setZoomScale((current) => Math.max(1.5, current - 0.5))
+                    }
                     style={{
                       flex: 1,
                       backgroundColor: "rgba(255, 255, 255, 0.14)",
@@ -275,12 +312,20 @@ export function ImageMeasurement({
                       paddingVertical: 10,
                     }}
                   >
-                    <Text style={{ textAlign: "center", color: "#ffffff", fontWeight: "700" }}>
+                    <Text
+                      style={{
+                        textAlign: "center",
+                        color: "#ffffff",
+                        fontWeight: "700",
+                      }}
+                    >
                       Zoom out
                     </Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => setZoomScale((current) => Math.min(5, current + 0.5))}
+                    onPress={() =>
+                      setZoomScale((current) => Math.min(5, current + 0.5))
+                    }
                     style={{
                       flex: 1,
                       backgroundColor: "#c56238",
@@ -288,7 +333,13 @@ export function ImageMeasurement({
                       paddingVertical: 10,
                     }}
                   >
-                    <Text style={{ textAlign: "center", color: "white", fontWeight: "700" }}>
+                    <Text
+                      style={{
+                        textAlign: "center",
+                        color: "white",
+                        fontWeight: "700",
+                      }}
+                    >
                       Zoom in
                     </Text>
                   </Pressable>
@@ -313,7 +364,11 @@ export function ImageMeasurement({
                       alignItems: "center",
                     }}
                   >
-                  {renderMeasurementCanvas(selectorWidth, selectorHeight, true)}
+                    {renderMeasurementCanvas(
+                      selectorWidth,
+                      selectorHeight,
+                      true
+                    )}
                   </ScrollView>
                 </ScrollView>
               </View>
