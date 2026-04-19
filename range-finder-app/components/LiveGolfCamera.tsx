@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Image,
   LayoutChangeEvent,
   Pressable,
   SafeAreaView,
@@ -25,8 +26,7 @@ import {
 import { CalibrationProfile, GolfEstimateResponse } from "../types";
 import { AppPalette } from "../theme";
 
-const DETECTION_INTERVAL_MS = 1400;
-const ZOOM_STEPS = [1, 1.5, 2, 2.5, 3];
+const ZOOM_STEPS = [1, 3];
 
 type DetectionState = {
   result: GolfEstimateResponse;
@@ -55,14 +55,14 @@ export function LiveGolfCamera({
   const [zoomFactor, setZoomFactor] = useState(1);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const [statusMessage, setStatusMessage] = useState(
-    "Point the camera at the pin. Live detection updates every second or so."
+    "Frame the pin, choose 1x or 3x, then capture a snapshot to measure it."
   );
   const [mountError, setMountError] = useState<string | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [detection, setDetection] = useState<DetectionState | null>(null);
+  const [snapshotUri, setSnapshotUri] = useState<string | null>(null);
 
   const cameraRef = useRef<CameraView | null>(null);
-  const loopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captureInFlightRef = useRef(false);
 
   const calibration = useMemo(
@@ -86,7 +86,7 @@ export function LiveGolfCamera({
   }, [zoomFactor]);
 
   const projectedLine = useMemo(() => {
-    if (!detection) return null;
+    if (!detection || !previewSize.width || !previewSize.height) return null;
 
     return projectGolfDetectionLine({
       detection: detection.result,
@@ -97,84 +97,68 @@ export function LiveGolfCamera({
     });
   }, [detection, previewSize.height, previewSize.width]);
 
-  useEffect(() => {
-    if (!cameraReady || !permission?.granted) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const runDetection = async () => {
-      if (!cameraReady || !permission.granted || !cameraRef.current) {
-        return;
-      }
-
-      if (captureInFlightRef.current) {
-        return;
-      }
-
-      captureInFlightRef.current = true;
-      setDetecting(true);
-
-      try {
-        const frame = await cameraRef.current.takePictureAsync({
-          quality: 0.45,
-          skipProcessing: true,
-          shutterSound: false,
-        });
-
-        const result = await estimateGolfDistance({
-          apiBaseUrl,
-          imageUri: frame.uri,
-          focalLengthPixels: String(focalLengthRef.current),
-        });
-
-        startTransition(() => {
-          setDetection({
-            result,
-            imageWidth: frame.width,
-            imageHeight: frame.height,
-            focalLengthPixels: focalLengthRef.current,
-            zoomFactor: zoomFactorRef.current,
-            capturedAt: Date.now(),
-          });
-        });
-
-        setStatusMessage("Tracking the pin live.");
-        setMountError(null);
-      } catch (error: any) {
-        setStatusMessage(
-          error?.message || "Could not detect the flagpole from the live camera frame."
-        );
-      } finally {
-        captureInFlightRef.current = false;
-        setDetecting(false);
-      }
-    };
-
-    const tick = async () => {
-      if (cancelled) return;
-
-      await runDetection();
-
-      if (!cancelled) {
-        loopTimeoutRef.current = setTimeout(tick, DETECTION_INTERVAL_MS);
-      }
-    };
-
-    void tick();
-
-    return () => {
-      cancelled = true;
-      if (loopTimeoutRef.current) {
-        clearTimeout(loopTimeoutRef.current);
-      }
-    };
-  }, [apiBaseUrl, cameraReady, permission?.granted]);
-
   function handlePreviewLayout(event: LayoutChangeEvent) {
     const { width, height } = event.nativeEvent.layout;
     setPreviewSize({ width, height });
+  }
+
+  async function handleSnapshot() {
+    if (!cameraReady || !permission?.granted || !cameraRef.current) {
+      return;
+    }
+
+    if (captureInFlightRef.current) {
+      return;
+    }
+
+    captureInFlightRef.current = true;
+    setDetecting(true);
+    setStatusMessage("Analyzing snapshot...");
+
+    try {
+      const frame = await cameraRef.current.takePictureAsync({
+        quality: 0.4,
+        shutterSound: false,
+      });
+
+      const result = await estimateGolfDistance({
+        apiBaseUrl,
+        imageUri: frame.uri,
+        focalLengthPixels: String(focalLengthRef.current),
+      });
+
+      setSnapshotUri(frame.uri);
+
+      startTransition(() => {
+        setDetection({
+          result,
+          imageWidth: frame.width,
+          imageHeight: frame.height,
+          focalLengthPixels: focalLengthRef.current,
+          zoomFactor: zoomFactorRef.current,
+          capturedAt: Date.now(),
+        });
+      });
+
+      setStatusMessage("Snapshot measured.");
+      setMountError(null);
+    } catch (error: any) {
+      setSnapshotUri(null);
+      setDetection(null);
+      setStatusMessage(
+        error?.message || "Could not detect the flagpole in this snapshot."
+      );
+    } finally {
+      captureInFlightRef.current = false;
+      setDetecting(false);
+    }
+  }
+
+  function handleRetake() {
+    setSnapshotUri(null);
+    setDetection(null);
+    setStatusMessage("Frame the pin, choose 1x or 3x, then capture a snapshot to measure it.");
+    setMountError(null);
   }
 
   if (!permission) {
@@ -220,8 +204,7 @@ export function LiveGolfCamera({
             Camera Access Needed
           </Text>
           <Text style={{ color: palette.muted, lineHeight: 22 }}>
-            Live flag detection needs the rear camera so the app can keep checking the
-            pin while you frame the shot.
+            Camera access is needed so you can capture a flag snapshot and measure it.
           </Text>
           <Pressable
             onPress={() => {
@@ -245,18 +228,22 @@ export function LiveGolfCamera({
   return (
     <View style={{ flex: 1, backgroundColor: "#09110c" }}>
       <View style={{ flex: 1 }} onLayout={handlePreviewLayout}>
-        <CameraView
-          ref={cameraRef}
-          style={{ flex: 1 }}
-          facing="back"
-          mode="picture"
-          zoom={cameraZoom}
-          onCameraReady={() => setCameraReady(true)}
-          onMountError={(event) => {
-            setMountError(event.message);
-            setStatusMessage(event.message);
-          }}
-        />
+        {snapshotUri ? (
+          <Image source={{ uri: snapshotUri }} style={{ flex: 1 }} resizeMode="cover" />
+        ) : (
+          <CameraView
+            ref={cameraRef}
+            style={{ flex: 1 }}
+            facing="back"
+            mode="picture"
+            zoom={cameraZoom}
+            onCameraReady={() => setCameraReady(true)}
+            onMountError={(event) => {
+              setMountError(event.message);
+              setStatusMessage(event.message);
+            }}
+          />
+        )}
 
         <SafeAreaView
           pointerEvents="box-none"
@@ -329,18 +316,6 @@ export function LiveGolfCamera({
                   Zoom {zoomFactor.toFixed(1)}x
                 </Text>
               </View>
-              <View
-                style={{
-                  backgroundColor: "rgba(8, 15, 11, 0.72)",
-                  borderRadius: 999,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                }}
-              >
-                <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 12 }}>
-                  Focal {Math.round(focalLengthPixels)} px
-                </Text>
-              </View>
               {detection ? (
                 <View
                   style={{
@@ -351,7 +326,7 @@ export function LiveGolfCamera({
                   }}
                 >
                   <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 12 }}>
-                    Last update {new Date(detection.capturedAt).toLocaleTimeString()}
+                    Snapshot {new Date(detection.capturedAt).toLocaleTimeString()}
                   </Text>
                 </View>
               ) : null}
@@ -416,7 +391,7 @@ export function LiveGolfCamera({
                   letterSpacing: 1,
                 }}
               >
-                Live distance
+                Snapshot distance
               </Text>
               <Text
                 style={{
@@ -449,7 +424,7 @@ export function LiveGolfCamera({
                 >
                   <ActivityIndicator size="small" color="#ffffff" />
                   <Text style={{ color: "#ffffff", fontWeight: "700" }}>
-                    Refreshing
+                    Measuring
                   </Text>
                 </View>
               ) : null}
@@ -472,6 +447,7 @@ export function LiveGolfCamera({
                     <Pressable
                       key={step}
                       onPress={() => setZoomFactor(step)}
+                      disabled={!!snapshotUri}
                       style={{
                         borderRadius: 999,
                         paddingHorizontal: 14,
@@ -481,6 +457,7 @@ export function LiveGolfCamera({
                         borderColor: active
                           ? palette.accent
                           : "rgba(255,255,255,0.12)",
+                        opacity: snapshotUri ? 0.65 : 1,
                       }}
                     >
                       <Text
@@ -494,6 +471,64 @@ export function LiveGolfCamera({
                     </Pressable>
                   );
                 })}
+              </View>
+
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable
+                  onPress={() => {
+                    void handleSnapshot();
+                  }}
+                  disabled={detecting || !!snapshotUri}
+                  style={{
+                    flex: 1,
+                    borderRadius: 18,
+                    paddingVertical: 14,
+                    backgroundColor:
+                      detecting || snapshotUri ? "rgba(255,255,255,0.08)" : palette.accent,
+                    borderWidth: 1,
+                    borderColor:
+                      detecting || snapshotUri ? "rgba(255,255,255,0.12)" : palette.accent,
+                    opacity: detecting || snapshotUri ? 0.75 : 1,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#ffffff",
+                      fontWeight: "800",
+                      textAlign: "center",
+                    }}
+                  >
+                    {detecting
+                      ? "Capturing..."
+                      : snapshotUri
+                        ? "Snapshot locked"
+                        : "Take snapshot"}
+                  </Text>
+                </Pressable>
+
+                {snapshotUri ? (
+                  <Pressable
+                    onPress={handleRetake}
+                    style={{
+                      flex: 1,
+                      borderRadius: 18,
+                      paddingVertical: 14,
+                      backgroundColor: "rgba(255,255,255,0.08)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#ffffff",
+                        fontWeight: "800",
+                        textAlign: "center",
+                      }}
+                    >
+                      Retake
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
 
               {mountError ? (

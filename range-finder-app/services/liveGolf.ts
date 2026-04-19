@@ -60,13 +60,7 @@ export function interpolateLiveGolfFocalLength(
   zoomFactor: number
 ) {
   const clampedZoom = clampZoomFactor(zoomFactor);
-  const progress = (clampedZoom - 1) / 2;
-
-  return (
-    calibration.oneX.focalLengthPixels +
-    (calibration.threeX.focalLengthPixels - calibration.oneX.focalLengthPixels) *
-      progress
-  );
+  return clampedZoom < 2 ? calibration.oneX.focalLengthPixels : calibration.threeX.focalLengthPixels;
 }
 
 export function projectGolfDetectionLine(params: {
