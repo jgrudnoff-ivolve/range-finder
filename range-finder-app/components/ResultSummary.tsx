@@ -14,7 +14,7 @@ type ResultState =
   | {
       kind: "calibration";
       data: CalibrationResponse;
-      profileName: string;
+      zoomLevel: 1 | 3;
     }
   | { kind: "estimate"; data: EstimateResponse }
   | {
@@ -231,10 +231,10 @@ export function ResultSummary({ result }: Props) {
               marginTop: 4,
             }}
           >
-            {result.profileName}
+            {result.zoomLevel}x lens
           </Text>
           <Text style={{ color: "#6f665b", marginTop: 6, lineHeight: 20 }}>
-            This focal length can now be reused on the estimate screen for the same camera and zoom level.
+            This focal pixel value can now be reused whenever you estimate distance with the {result.zoomLevel}x lens.
           </Text>
         </View>
 

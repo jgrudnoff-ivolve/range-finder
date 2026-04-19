@@ -4,16 +4,23 @@
     "slug": "range-finder",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "rangefinder",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
-		"infoPlist": {
+      "infoPlist": {
         "NSCameraUsageDescription": "Allow camera access so you can take a photo for distance measurement.",
         "NSPhotoLibraryUsageDescription": "Allow photo library access so you can choose an image for distance measurement."
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
       }
     },
-	"plugins": [
+    "plugins": [
+      "react-native-vision-camera",
       [
         "expo-camera",
         {
@@ -28,9 +35,25 @@
         }
       ]
     ],
-    "android": {},
+    "android": {
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.rangefinder",
+      "runtimeVersion": "1.0.0"
+    },
     "web": {
       "bundler": "metro"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "579723dc-97fa-46d2-b759-a9001885a51a"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/579723dc-97fa-46d2-b759-a9001885a51a"
+    },
+    "owner": "jgrudnoff"
   }
 }

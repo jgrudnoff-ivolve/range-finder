@@ -49,10 +49,14 @@ export function ProfileDropdown({
         >
           <View style={{ flex: 1, gap: 4 }}>
             <Text style={{ color: palette.text, fontWeight: "700" }}>
-              {selectedProfile ? selectedProfile.name : "No preset selected"}
+              {selectedProfile
+                ? `${selectedProfile.zoomLevel ?? "?"}x lens`
+                : "No calibration selected"}
             </Text>
             <Text style={{ color: palette.muted, fontSize: 12 }}>
-              {selectedProfile ? `${selectedProfile.focalLengthPixels} px` : emptyMessage}
+              {selectedProfile
+                ? `${selectedProfile.focalLengthPixels} px • ${selectedProfile.name}${selectedProfile.actualZoomFactor ? ` • ${selectedProfile.actualZoomFactor.toFixed(1)}x` : ""}`
+                : emptyMessage}
             </Text>
           </View>
           <Text style={{ color: palette.muted, fontWeight: "700" }}>
@@ -94,10 +98,13 @@ export function ProfileDropdown({
                 }}
               >
                 <Text style={{ color: palette.text, fontWeight: "700" }}>
-                  {profile.name}
+                  {profile.zoomLevel ? `${profile.zoomLevel}x lens` : profile.name}
                 </Text>
                 <Text style={{ color: palette.muted, fontSize: 12, marginTop: 4 }}>
-                  {profile.focalLengthPixels} px
+                  {profile.focalLengthPixels} px • {profile.name}
+                  {profile.actualZoomFactor
+                    ? ` • ${profile.actualZoomFactor.toFixed(1)}x`
+                    : ""}
                 </Text>
               </Pressable>
             ))

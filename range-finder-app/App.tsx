@@ -50,8 +50,7 @@ export default function App() {
   const [realObjectHeightCm, setRealObjectHeightCm] = useState("8.56");
   const [knownDistanceCm, setKnownDistanceCm] = useState("50");
   const [focalLengthPixels, setFocalLengthPixels] = useState("");
-
-  const [profileName, setProfileName] = useState("Rear Camera 1x");
+  const [calibrationZoomLevel, setCalibrationZoomLevel] = useState<1 | 3>(1);
   const [profiles, setProfiles] = useState<CalibrationProfile[]>([]);
 
   const [result, setResult] = useState<
@@ -61,7 +60,7 @@ export default function App() {
     | {
         kind: "calibration";
         data: CalibrationResponse;
-        profileName: string;
+        zoomLevel: 1 | 3;
       }
     | { kind: "estimate"; data: EstimateResponse }
   >({ kind: "idle" });
@@ -73,7 +72,9 @@ export default function App() {
 
   async function loadProfiles() {
     const data = await getCalibrationProfiles();
-    setProfiles(data);
+    setProfiles(
+      [...data].sort((a, b) => (a.zoomLevel ?? 99) - (b.zoomLevel ?? 99))
+    );
   }
 
   const selectedProfile = useMemo(() => {
@@ -222,9 +223,14 @@ export default function App() {
       setFocalLengthPixels(String(calibration.focal_length_pixels));
 
       const profile: CalibrationProfile = {
-        id: profileName.trim().toLowerCase().replace(/\s+/g, "-"),
-        name: profileName,
+        id: calibrationZoomLevel === 1 ? "default-1x" : "default-3x",
+        name:
+          calibrationZoomLevel === 1
+            ? "Rear Camera 1x Lens"
+            : "Rear Camera 3x Telephoto",
         focalLengthPixels: calibration.focal_length_pixels,
+        zoomLevel: calibrationZoomLevel,
+        actualZoomFactor: calibrationZoomLevel,
       };
 
       await saveCalibrationProfile(profile);
@@ -232,7 +238,7 @@ export default function App() {
       setResult({
         kind: "calibration",
         data: calibration,
-        profileName: profile.name,
+        zoomLevel: calibrationZoomLevel,
       });
     } catch (error: any) {
       setResult({ kind: "error", message: error.message || "Calibration failed" });
@@ -430,7 +436,7 @@ export default function App() {
                 Estimation Inputs
               </Text>
               <Text style={{ color: palette.muted, fontSize: 13 }}>
-                Estimation uses a saved calibration preset, so users don't have to type focal length values manually.
+                Estimation uses a saved zoom calibration, so users don't have to type focal length values manually.
               </Text>
 
               <Text
@@ -599,7 +605,7 @@ export default function App() {
                 Calibration Inputs
               </Text>
               <Text style={{ color: palette.muted, fontSize: 13 }}>
-                Enter the real-world dimensions for the reference shot, then save the result as a reusable profile.
+                Enter the real-world dimensions for the reference shot, then save the focal pixel value for a specific zoom level.
               </Text>
 
               <Text
@@ -645,21 +651,37 @@ export default function App() {
               <Text
                 style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
               >
-                Profile name
+                Zoom level
               </Text>
-              <TextInput
-                value={profileName}
-                onChangeText={setProfileName}
-                style={{
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                  borderRadius: 14,
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  backgroundColor: palette.surfaceStrong,
-                  color: palette.text,
-                }}
-              />
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {[1, 3].map((zoom) => {
+                  const active = calibrationZoomLevel === zoom;
+                  return (
+                    <Pressable
+                      key={zoom}
+                      onPress={() => setCalibrationZoomLevel(zoom as 1 | 3)}
+                      style={{
+                        flex: 1,
+                        borderRadius: 14,
+                        paddingVertical: 12,
+                        backgroundColor: active ? palette.accent : palette.surfaceStrong,
+                        borderWidth: 1,
+                        borderColor: active ? palette.accent : palette.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          textAlign: "center",
+                          fontWeight: "700",
+                          color: active ? "#ffffff" : palette.text,
+                        }}
+                      >
+                        {zoom}x lens
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
               <Pressable
                 onPress={handleCalibrationSubmit}

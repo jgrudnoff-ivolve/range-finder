@@ -29,10 +29,10 @@ export function CalibrationProfilesCard({
       }}
     >
       <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-        Saved Calibration Profiles
+        Saved Lens Calibrations
       </Text>
       <Text style={{ color: palette.muted, fontSize: 13 }}>
-        Reuse focal length values for the same device and zoom level. Profiles can be deleted here.
+        Reuse focal pixel values for each zoom level. Calibrations can be deleted here.
       </Text>
 
       {profiles.length === 0 ? (
@@ -70,7 +70,7 @@ export function CalibrationProfilesCard({
               }}
             >
               <Text style={{ fontWeight: "700", color: palette.text, flex: 1 }}>
-                {profile.name}
+                {profile.zoomLevel ? `${profile.zoomLevel}x lens` : profile.name}
               </Text>
               <View
                 style={{
@@ -85,6 +85,12 @@ export function CalibrationProfilesCard({
                 </Text>
               </View>
             </View>
+            <Text style={{ color: palette.muted, fontSize: 12 }}>
+              {profile.name}
+              {profile.actualZoomFactor
+                ? ` • saved at ${profile.actualZoomFactor.toFixed(1)}x`
+                : ""}
+            </Text>
 
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Pressable

@@ -4,12 +4,14 @@ const DEFAULT_ONE_X_PROFILE: CalibrationProfile = {
   id: "default-1x",
   name: "Rear Camera 1x Zoom (Default)",
   focalLengthPixels: 2900,
+  zoomLevel: 1,
 };
 
 const DEFAULT_THREE_X_PROFILE: CalibrationProfile = {
   id: "default-3x",
   name: "Rear Camera 3x Zoom (Default)",
   focalLengthPixels: 7800,
+  zoomLevel: 3,
 };
 
 export type LiveGolfCalibration = {
@@ -34,23 +36,25 @@ export type PreparedLiveGolfSnapshot = {
   height: number;
 };
 
-const LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM = {
-  native: {
-    1: 0,
-    3: 0,
-  },
-  web: {
-    1: 0,
-    3: 0,
-  },
-} as const;
+export type LiveGolfLensMode = {
+  id: "1x" | "3x";
+  label: string;
+  focalLengthPixels: number;
+  lens: string | null;
+};
 
 function isOneXProfile(profile: CalibrationProfile) {
+  if (profile.zoomLevel === 1) {
+    return true;
+  }
   const name = profile.name.toLowerCase();
   return profile.id === DEFAULT_ONE_X_PROFILE.id || name.includes("1x");
 }
 
 function isThreeXProfile(profile: CalibrationProfile) {
+  if (profile.zoomLevel === 3) {
+    return true;
+  }
   const name = profile.name.toLowerCase();
   return profile.id === DEFAULT_THREE_X_PROFILE.id || name.includes("3x");
 }
@@ -64,38 +68,55 @@ export function resolveLiveGolfCalibration(
   return { oneX, threeX };
 }
 
-export function clampZoomFactor(zoomFactor: number) {
-  return Math.min(3, Math.max(1, zoomFactor));
+export function resolveWideLens(availableLenses: string[]) {
+  return (
+    availableLenses.find((lens) => lens === "builtInWideAngleCamera") ??
+    availableLenses.find((lens) => lens.toLowerCase().includes("wide")) ??
+    null
+  );
 }
 
-export function zoomFactorToCameraZoom(zoomFactor: number) {
-  const clampedZoom = clampZoomFactor(zoomFactor);
-  return LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM.native[
-    clampedZoom as keyof typeof LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM.native
-  ] ?? 0;
+export function resolveTelephotoLens(availableLenses: string[]) {
+  return (
+    availableLenses.find((lens) => lens === "builtInTelephotoCamera") ??
+    availableLenses.find((lens) => lens.toLowerCase().includes("telephoto")) ??
+    null
+  );
 }
 
-export function getSupportedLiveGolfZoomSteps() {
-  return [1, 3];
-}
+export function resolveLiveGolfLensModes(
+  calibration: LiveGolfCalibration,
+  availableLenses: string[],
+  platform: "ios" | "android" | "web"
+): LiveGolfLensMode[] {
+  const modes: LiveGolfLensMode[] = [
+    {
+      id: "1x",
+      label: "1x lens",
+      focalLengthPixels: calibration.oneX.focalLengthPixels,
+      lens: platform === "ios" ? resolveWideLens(availableLenses) : null,
+    },
+  ];
 
-export function getLiveGolfPreviewScale(zoomFactor: number) {
-  return clampZoomFactor(zoomFactor);
+  if (platform === "ios") {
+    const telephotoLens = resolveTelephotoLens(availableLenses);
+    if (telephotoLens) {
+      modes.push({
+        id: "3x",
+        label: "3x telephoto",
+        focalLengthPixels: calibration.threeX.focalLengthPixels,
+        lens: telephotoLens,
+      });
+    }
+  }
+
+  return modes;
 }
 
 export async function prepareLiveGolfSnapshot(
-  frame: PreparedLiveGolfSnapshot,
-  zoomFactor: number
+  frame: PreparedLiveGolfSnapshot
 ): Promise<PreparedLiveGolfSnapshot> {
   return frame;
-}
-
-export function interpolateLiveGolfFocalLength(
-  calibration: LiveGolfCalibration,
-  zoomFactor: number
-) {
-  const clampedZoom = clampZoomFactor(zoomFactor);
-  return calibration.oneX.focalLengthPixels * clampedZoom;
 }
 
 export function projectGolfDetectionLine(params: {
@@ -104,23 +125,14 @@ export function projectGolfDetectionLine(params: {
   imageHeight: number;
   previewWidth: number;
   previewHeight: number;
-  zoomFactor: number;
 }): ProjectedGolfLine | null {
-  const {
-    detection,
-    imageWidth,
-    imageHeight,
-    previewWidth,
-    previewHeight,
-    zoomFactor,
-  } = params;
+  const { detection, imageWidth, imageHeight, previewWidth, previewHeight } = params;
 
   if (!imageWidth || !imageHeight || !previewWidth || !previewHeight) {
     return null;
   }
 
-  const zoomScale = clampZoomFactor(zoomFactor);
-  const scale = Math.max(previewWidth / imageWidth, previewHeight / imageHeight) * zoomScale;
+  const scale = Math.max(previewWidth / imageWidth, previewHeight / imageHeight);
   const renderedWidth = imageWidth * scale;
   const renderedHeight = imageHeight * scale;
   const offsetX = (previewWidth - renderedWidth) / 2;

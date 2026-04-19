@@ -9,6 +9,8 @@ export type CalibrationProfile = {
   id: string;
   name: string;
   focalLengthPixels: number;
+  zoomLevel?: 1 | 3;
+  actualZoomFactor?: number;
 };
 
 export type CalibrationResponse = {

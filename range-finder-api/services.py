@@ -95,7 +95,7 @@ def calculate_distance(real, px, focal):
 
 def crop_image_for_zoom(image: Image.Image, zoom_factor: float):
     if zoom_factor <= 1:
-        return image, 0.0, 0.0, 1.0
+        return image, 0.0, 0.0
 
     crop_width = image.width / zoom_factor
     crop_height = image.height / zoom_factor
