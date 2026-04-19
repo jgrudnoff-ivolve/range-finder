@@ -14,13 +14,13 @@ import * as ImagePicker from "expo-image-picker";
 import { AppHero } from "./components/AppHero";
 import { CalibrationProfilesCard } from "./components/CalibrationProfilesCard";
 import { ImageMeasurement } from "./components/ImageMeasurement";
+import { LiveGolfCamera } from "./components/LiveGolfCamera";
 import { MenuDrawer } from "./components/MenuDrawer";
 import { ProfileDropdown } from "./components/ProfileDropdown";
 import { ResultSummary } from "./components/ResultSummary";
 import {
   calibrateFocalLength,
   estimateDistance,
-  estimateGolfDistance,
 } from "./services/api";
 import {
   deleteCalibrationProfile,
@@ -31,7 +31,6 @@ import {
   CalibrationProfile,
   CalibrationResponse,
   EstimateResponse,
-  GolfEstimateResponse,
   Point,
 } from "./types";
 import { palettes, ScreenMode } from "./theme";
@@ -65,13 +64,6 @@ export default function App() {
         profileName: string;
       }
     | { kind: "estimate"; data: EstimateResponse }
-    | {
-        kind: "golf";
-        data: GolfEstimateResponse;
-        imageUri: string;
-        imageWidth: number;
-        imageHeight: number;
-      }
   >({ kind: "idle" });
   const [loading, setLoading] = useState(false);
 
@@ -294,45 +286,28 @@ export default function App() {
     await loadProfiles();
   }
 
-  async function handleGolfEstimateSubmit() {
-    if (!imageUri) {
-      Alert.alert("Missing image", "Please choose an image first.");
-      return;
-    }
+  if (screen === "golf") {
+    return (
+      <View style={{ flex: 1, backgroundColor: palette.bg }}>
+        <LiveGolfCamera
+          apiBaseUrl={API_BASE_URL}
+          palette={palette}
+          profiles={profiles}
+          onOpenMenu={() => setMenuOpen(true)}
+        />
 
-    if (!selectedProfile) {
-      Alert.alert(
-        "Missing calibration",
-        "Choose a saved calibration profile before using Golf mode."
-      );
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setResult({ kind: "loading", message: "Estimating golf distance..." });
-
-      const golfEstimate = await estimateGolfDistance({
-        apiBaseUrl: API_BASE_URL,
-        imageUri: imageUri!,
-        focalLengthPixels: String(selectedProfile.focalLengthPixels),
-      });
-
-      setResult({
-        kind: "golf",
-        data: golfEstimate,
-        imageUri: imageUri!,
-        imageWidth,
-        imageHeight,
-      });
-    } catch (error: any) {
-      setResult({
-        kind: "error",
-        message: error.message || "Golf distance estimation failed",
-      });
-    } finally {
-      setLoading(false);
-    }
+        <MenuDrawer
+          palette={palette}
+          screen={screen}
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          onNavigate={(nextScreen) => {
+            setScreen(nextScreen);
+            setMenuOpen(false);
+          }}
+        />
+      </View>
+    );
   }
 
   return (
@@ -508,168 +483,6 @@ export default function App() {
                   style={{ color: "white", textAlign: "center", fontWeight: "700" }}
                 >
                   {loading ? "Estimating..." : "Estimate distance"}
-                </Text>
-              </Pressable>
-            </View>
-          </>
-        ) : screen === "golf" ? (
-          <>
-            <View
-              style={{
-                backgroundColor: palette.surface,
-                borderRadius: 24,
-                padding: 18,
-                borderWidth: 1,
-                borderColor: palette.border,
-                gap: 12,
-              }}
-            >
-              <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-                Golf Mode
-              </Text>
-              <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
-                Golf mode assumes a standard 2.13 metre golf flag and detects the pin automatically from the photo.
-              </Text>
-            </View>
-
-            <View
-              style={{
-                backgroundColor: palette.surface,
-                borderRadius: 24,
-                padding: 18,
-                borderWidth: 1,
-                borderColor: palette.border,
-                gap: 14,
-              }}
-            >
-              <View style={{ gap: 4 }}>
-                <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-                  Golf Photo
-                </Text>
-                <Text style={{ color: palette.muted, fontSize: 13 }}>
-                  Choose a photo of the pin and the backend will try to detect the flagpole for you.
-                </Text>
-              </View>
-
-              <Pressable
-                onPress={pickImage}
-                style={{
-                  backgroundColor: palette.accent,
-                  paddingVertical: 14,
-                  borderRadius: 16,
-                  shadowColor: palette.accentDark,
-                  shadowOpacity: 0.18,
-                  shadowRadius: 10,
-                  shadowOffset: { width: 0, height: 4 },
-                  elevation: 2,
-                }}
-              >
-                <Text
-                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
-                >
-                  {imageUri ? "Choose a different image" : "Choose image"}
-                </Text>
-              </Pressable>
-
-              {imageUri ? (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <View
-                    style={{
-                      backgroundColor: palette.accentSoft,
-                      borderRadius: 999,
-                      paddingHorizontal: 12,
-                      paddingVertical: 7,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: palette.accentDark,
-                        fontSize: 12,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {imageWidth} x {imageHeight}
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-            </View>
-
-            <View
-              style={{
-                backgroundColor: palette.surface,
-                borderRadius: 24,
-                padding: 18,
-                borderWidth: 1,
-                borderColor: palette.border,
-                gap: 10,
-              }}
-            >
-              <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-                Golf Inputs
-              </Text>
-              <Text style={{ color: palette.muted, fontSize: 13 }}>
-                Golf mode always uses a 2.13 m flag height. Choose a saved calibration preset and let the system detect the golf flag automatically.
-              </Text>
-
-              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>
-                Calibration preset
-              </Text>
-              <ProfileDropdown
-                palette={palette}
-                profiles={profiles}
-                selectedProfile={selectedProfile}
-                selectedFocalLength={focalLengthPixels}
-                open={profileDropdownOpen}
-                emptyMessage="Choose a saved calibration profile to enable Golf mode."
-                onToggle={() => setProfileDropdownOpen((current) => !current)}
-                onSelect={handleUseProfile}
-              />
-
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                  borderRadius: 14,
-                  paddingHorizontal: 12,
-                  paddingVertical: 14,
-                  backgroundColor: palette.surfaceStrong,
-                  gap: 4,
-                }}
-              >
-                <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>
-                  Assumed target
-                </Text>
-                <Text style={{ color: palette.text, fontWeight: "700" }}>
-                  Golf flag
-                </Text>
-                <Text style={{ color: palette.muted, fontSize: 12 }}>
-                  Fixed height: 2.13 metres
-                </Text>
-              </View>
-
-              <Pressable
-                onPress={handleGolfEstimateSubmit}
-                disabled={loading || !selectedProfile}
-                style={{
-                  backgroundColor:
-                    loading || !selectedProfile ? palette.accentDark : palette.accent,
-                  paddingVertical: 14,
-                  borderRadius: 16,
-                  marginTop: 6,
-                  opacity: loading || !selectedProfile ? 0.72 : 1,
-                }}
-              >
-                <Text
-                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
-                >
-                  {loading ? "Estimating..." : "Estimate golf distance"}
                 </Text>
               </Pressable>
             </View>
