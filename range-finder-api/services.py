@@ -52,9 +52,7 @@ class GolfEstimateInput:
 
 ROBOFLOW_API_URL = os.environ.get("ROBOFLOW_API_URL", "https://serverless.roboflow.com")
 ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "p1YmnoubC9Pf6kKWsRf4")
-ROBOFLOW_WORKSPACE_NAME = os.environ.get("ROBOFLOW_WORKSPACE_NAME", "")
-ROBOFLOW_WORKFLOW_ID = os.environ.get("ROBOFLOW_WORKFLOW_ID", "detect-count-and-visualize")
-ROBOFLOW_WORKFLOW_IMAGE_INPUT = os.environ.get("ROBOFLOW_WORKFLOW_IMAGE_INPUT", "image")
+ROBOFLOW_MODEL_ID = os.environ.get("ROBOFLOW_MODEL_ID", "find-flagpole-3/4")
 ROBOFLOW_MAX_IMAGE_DIMENSION = int(os.environ.get("ROBOFLOW_MAX_IMAGE_DIMENSION", "1280"))
 ROBOFLOW_JPEG_QUALITY = int(os.environ.get("ROBOFLOW_JPEG_QUALITY", "70"))
 
@@ -113,33 +111,8 @@ def get_roboflow_client():
     return _roboflow_client
 
 
-def extract_workflow_predictions(payload):
-    if isinstance(payload, dict):
-        predictions = payload.get("predictions")
-        if isinstance(predictions, list) and predictions:
-            return predictions
-
-        for value in payload.values():
-            nested_predictions = extract_workflow_predictions(value)
-            if nested_predictions:
-                return nested_predictions
-
-    if isinstance(payload, list):
-        for item in payload:
-            nested_predictions = extract_workflow_predictions(item)
-            if nested_predictions:
-                return nested_predictions
-
-    return []
-
-
 def detect_golf_flag_line_from_roboflow(image: Image.Image):
     client = get_roboflow_client()
-
-    if not ROBOFLOW_WORKSPACE_NAME:
-        raise ServiceValidationError(
-            "Roboflow workflow inference requires ROBOFLOW_WORKSPACE_NAME to be configured."
-        )
 
     working_image = image.convert("RGB")
     scale = 1.0
@@ -160,20 +133,14 @@ def detect_golf_flag_line_from_roboflow(image: Image.Image):
             quality=ROBOFLOW_JPEG_QUALITY,
             optimize=True,
         )
-        result = client.run_workflow(
-            workspace_name=ROBOFLOW_WORKSPACE_NAME,
-            workflow_id=ROBOFLOW_WORKFLOW_ID,
-            images={
-                ROBOFLOW_WORKFLOW_IMAGE_INPUT: temp_path,
-            },
-        )
+        result = client.infer(temp_path, model_id=ROBOFLOW_MODEL_ID)
     except Exception as exc:
         raise ServiceValidationError("Roboflow inference failed.") from exc
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
 
-    predictions = extract_workflow_predictions(result)
+    predictions = result.get("predictions") or []
     if not predictions:
         raise ServiceValidationError("No flagpole detected in the image.")
 
