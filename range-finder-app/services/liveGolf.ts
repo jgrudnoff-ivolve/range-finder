@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 import { CalibrationProfile, GolfEstimateResponse } from "../types";
 
 const DEFAULT_ONE_X_PROFILE: CalibrationProfile = {
@@ -28,6 +30,23 @@ export type ProjectedGolfLine = {
   angle: number;
 };
 
+export type PreparedLiveGolfSnapshot = {
+  uri: string;
+  width: number;
+  height: number;
+};
+
+const LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM = {
+  native: {
+    1: 0,
+    3: 0,
+  },
+  web: {
+    1: 0,
+    3: 0,
+  },
+} as const;
+
 function isOneXProfile(profile: CalibrationProfile) {
   const name = profile.name.toLowerCase();
   return profile.id === DEFAULT_ONE_X_PROFILE.id || name.includes("1x");
@@ -52,7 +71,81 @@ export function clampZoomFactor(zoomFactor: number) {
 }
 
 export function zoomFactorToCameraZoom(zoomFactor: number) {
-  return (clampZoomFactor(zoomFactor) - 1) / 2;
+  const clampedZoom = clampZoomFactor(zoomFactor);
+  const platformConfig =
+    Platform.OS === "web"
+      ? LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM.web
+      : LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM.native;
+
+  return platformConfig[clampedZoom as keyof typeof platformConfig] ?? 0;
+}
+
+export function getSupportedLiveGolfZoomSteps() {
+  return [1, 3];
+}
+
+export function getLiveGolfPreviewScale(zoomFactor: number) {
+  return Platform.OS === "web" ? clampZoomFactor(zoomFactor) : 1;
+}
+
+export async function prepareLiveGolfSnapshot(
+  frame: PreparedLiveGolfSnapshot,
+  zoomFactor: number
+): Promise<PreparedLiveGolfSnapshot> {
+  const clampedZoom = clampZoomFactor(zoomFactor);
+
+  if (Platform.OS !== "web" || clampedZoom <= 1) {
+    return frame;
+  }
+
+  return cropWebSnapshot(frame, clampedZoom);
+}
+
+async function cropWebSnapshot(
+  frame: PreparedLiveGolfSnapshot,
+  zoomFactor: number
+): Promise<PreparedLiveGolfSnapshot> {
+  const image = await loadBrowserImage(frame.uri);
+  const cropWidth = image.width / zoomFactor;
+  const cropHeight = image.height / zoomFactor;
+  const cropX = (image.width - cropWidth) / 2;
+  const cropY = (image.height - cropHeight) / 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Could not prepare zoomed snapshot.");
+  }
+
+  context.drawImage(
+    image,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    image.width,
+    image.height
+  );
+
+  return {
+    uri: canvas.toDataURL("image/jpeg", 0.82),
+    width: image.width,
+    height: image.height,
+  };
+}
+
+function loadBrowserImage(uri: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load captured snapshot."));
+    image.src = uri;
+  });
 }
 
 export function interpolateLiveGolfFocalLength(
@@ -60,7 +153,7 @@ export function interpolateLiveGolfFocalLength(
   zoomFactor: number
 ) {
   const clampedZoom = clampZoomFactor(zoomFactor);
-  return clampedZoom < 2 ? calibration.oneX.focalLengthPixels : calibration.threeX.focalLengthPixels;
+  return calibration.oneX.focalLengthPixels * clampedZoom;
 }
 
 export function projectGolfDetectionLine(params: {

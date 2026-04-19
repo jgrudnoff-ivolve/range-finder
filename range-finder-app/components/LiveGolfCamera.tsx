@@ -18,15 +18,16 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { estimateGolfDistance } from "../services/api";
 import {
+  getSupportedLiveGolfZoomSteps,
+  getLiveGolfPreviewScale,
   interpolateLiveGolfFocalLength,
+  prepareLiveGolfSnapshot,
   projectGolfDetectionLine,
   resolveLiveGolfCalibration,
   zoomFactorToCameraZoom,
 } from "../services/liveGolf";
 import { CalibrationProfile, GolfEstimateResponse } from "../types";
 import { AppPalette } from "../theme";
-
-const ZOOM_STEPS = [1, 3];
 
 type DetectionState = {
   result: GolfEstimateResponse;
@@ -50,12 +51,15 @@ export function LiveGolfCamera({
   profiles,
   onOpenMenu,
 }: Props) {
+  const zoomSteps = useMemo(() => getSupportedLiveGolfZoomSteps(), []);
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
   const [zoomFactor, setZoomFactor] = useState(1);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const [statusMessage, setStatusMessage] = useState(
-    "Frame the pin, choose 1x or 3x, then capture a snapshot to measure it."
+    zoomSteps.length > 1
+      ? "Frame the pin, choose a zoom level, then capture a snapshot to measure it."
+      : "Frame the pin, then capture a snapshot to measure it."
   );
   const [mountError, setMountError] = useState<string | null>(null);
   const [detecting, setDetecting] = useState(false);
@@ -74,6 +78,7 @@ export function LiveGolfCamera({
     [calibration, zoomFactor]
   );
   const cameraZoom = useMemo(() => zoomFactorToCameraZoom(zoomFactor), [zoomFactor]);
+  const previewScale = useMemo(() => getLiveGolfPreviewScale(zoomFactor), [zoomFactor]);
   const focalLengthRef = useRef(focalLengthPixels);
   const zoomFactorRef = useRef(zoomFactor);
 
@@ -122,24 +127,32 @@ export function LiveGolfCamera({
         quality: 0.4,
         shutterSound: false,
       });
+      const preparedFrame = await prepareLiveGolfSnapshot(
+        {
+          uri: frame.uri,
+          width: frame.width,
+          height: frame.height,
+        },
+        zoomFactorRef.current
+      );
       const captureMs = Date.now() - captureStart;
 
       const apiStart = Date.now();
       const result = await estimateGolfDistance({
         apiBaseUrl,
-        imageUri: frame.uri,
+        imageUri: preparedFrame.uri,
         focalLengthPixels: String(focalLengthRef.current),
       });
       const apiMs = Date.now() - apiStart;
       const totalMs = Date.now() - snapshotStart;
 
-      setSnapshotUri(frame.uri);
+      setSnapshotUri(preparedFrame.uri);
 
       startTransition(() => {
         setDetection({
           result,
-          imageWidth: frame.width,
-          imageHeight: frame.height,
+          imageWidth: preparedFrame.width,
+          imageHeight: preparedFrame.height,
           focalLengthPixels: focalLengthRef.current,
           zoomFactor: zoomFactorRef.current,
           capturedAt: Date.now(),
@@ -152,8 +165,8 @@ export function LiveGolfCamera({
         capture_ms: captureMs,
         api_ms: apiMs,
         total_ms: totalMs,
-        image_width: frame.width,
-        image_height: frame.height,
+        image_width: preparedFrame.width,
+        image_height: preparedFrame.height,
         zoom_factor: zoomFactorRef.current,
         focal_length_pixels: focalLengthRef.current,
       });
@@ -178,7 +191,11 @@ export function LiveGolfCamera({
   function handleRetake() {
     setSnapshotUri(null);
     setDetection(null);
-    setStatusMessage("Frame the pin, choose 1x or 3x, then capture a snapshot to measure it.");
+    setStatusMessage(
+      zoomSteps.length > 1
+        ? "Frame the pin, choose a zoom level, then capture a snapshot to measure it."
+        : "Frame the pin, then capture a snapshot to measure it."
+    );
     setMountError(null);
   }
 
@@ -252,18 +269,23 @@ export function LiveGolfCamera({
         {snapshotUri ? (
           <Image source={{ uri: snapshotUri }} style={{ flex: 1 }} resizeMode="cover" />
         ) : (
-          <CameraView
-            ref={cameraRef}
-            style={{ flex: 1 }}
-            facing="back"
-            mode="picture"
-            zoom={cameraZoom}
-            onCameraReady={() => setCameraReady(true)}
-            onMountError={(event) => {
-              setMountError(event.message);
-              setStatusMessage(event.message);
-            }}
-          />
+          <View style={{ flex: 1, overflow: "hidden" }}>
+            <CameraView
+              ref={cameraRef}
+              style={{
+                flex: 1,
+                transform: [{ scale: previewScale }],
+              }}
+              facing="back"
+              mode="picture"
+              zoom={cameraZoom}
+              onCameraReady={() => setCameraReady(true)}
+              onMountError={(event) => {
+                setMountError(event.message);
+                setStatusMessage(event.message);
+              }}
+            />
+          </View>
         )}
 
         <SafeAreaView
@@ -462,7 +484,7 @@ export function LiveGolfCamera({
               }}
             >
               <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                {ZOOM_STEPS.map((step) => {
+                {zoomSteps.map((step) => {
                   const active = Math.abs(step - zoomFactor) < 0.01;
                   return (
                     <Pressable
