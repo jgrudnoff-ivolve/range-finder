@@ -52,7 +52,13 @@ class GolfEstimateInput:
 
 ROBOFLOW_API_URL = os.environ.get("ROBOFLOW_API_URL", "https://serverless.roboflow.com")
 ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "p1YmnoubC9Pf6kKWsRf4")
-ROBOFLOW_MODEL_ID = os.environ.get("ROBOFLOW_MODEL_ID", "find-flagpole-3/4")
+ROBOFLOW_WORKSPACE_NAME = os.environ.get("ROBOFLOW_WORKSPACE_NAME", "")
+ROBOFLOW_WORKFLOW_ID = os.environ.get("ROBOFLOW_WORKFLOW_ID", "detect-count-and-visualize")
+ROBOFLOW_WORKFLOW_IMAGE_INPUT = os.environ.get("ROBOFLOW_WORKFLOW_IMAGE_INPUT", "image")
+ROBOFLOW_MAX_IMAGE_DIMENSION = int(os.environ.get("ROBOFLOW_MAX_IMAGE_DIMENSION", "1280"))
+ROBOFLOW_JPEG_QUALITY = int(os.environ.get("ROBOFLOW_JPEG_QUALITY", "70"))
+
+_roboflow_client = None
 
 
 def validate_positive(name, value):
@@ -88,41 +94,96 @@ def calculate_distance(real, px, focal):
     return (real * focal) / px
 
 
-def detect_golf_flag_line_from_roboflow(image: Image.Image):
-    try:
-        from inference_sdk import InferenceHTTPClient
-    except Exception as exc:
-        raise ServiceValidationError(
-            "Roboflow inference is not installed. Install backend requirements to enable auto detection."
-        ) from exc
+def get_roboflow_client():
+    global _roboflow_client
 
-    client = InferenceHTTPClient(
-        api_url=ROBOFLOW_API_URL,
-        api_key=ROBOFLOW_API_KEY,
-    )
+    if _roboflow_client is None:
+        try:
+            from inference_sdk import InferenceHTTPClient
+        except Exception as exc:
+            raise ServiceValidationError(
+                "Roboflow inference is not installed. Install backend requirements to enable auto detection."
+            ) from exc
+
+        _roboflow_client = InferenceHTTPClient(
+            api_url=ROBOFLOW_API_URL,
+            api_key=ROBOFLOW_API_KEY,
+        )
+
+    return _roboflow_client
+
+
+def extract_workflow_predictions(payload):
+    if isinstance(payload, dict):
+        predictions = payload.get("predictions")
+        if isinstance(predictions, list) and predictions:
+            return predictions
+
+        for value in payload.values():
+            nested_predictions = extract_workflow_predictions(value)
+            if nested_predictions:
+                return nested_predictions
+
+    if isinstance(payload, list):
+        for item in payload:
+            nested_predictions = extract_workflow_predictions(item)
+            if nested_predictions:
+                return nested_predictions
+
+    return []
+
+
+def detect_golf_flag_line_from_roboflow(image: Image.Image):
+    client = get_roboflow_client()
+
+    if not ROBOFLOW_WORKSPACE_NAME:
+        raise ServiceValidationError(
+            "Roboflow workflow inference requires ROBOFLOW_WORKSPACE_NAME to be configured."
+        )
+
+    working_image = image.convert("RGB")
+    scale = 1.0
+    max_dimension = max(working_image.size)
+    if max_dimension > ROBOFLOW_MAX_IMAGE_DIMENSION:
+        scale = ROBOFLOW_MAX_IMAGE_DIMENSION / max_dimension
+        resized_width = max(1, round(working_image.width * scale))
+        resized_height = max(1, round(working_image.height * scale))
+        working_image = working_image.resize((resized_width, resized_height))
 
     temp_path = None
     try:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
             temp_path = temp_file.name
-        image.convert("RGB").save(temp_path, format="PNG")
-        result = client.infer(temp_path, model_id=ROBOFLOW_MODEL_ID)
+        working_image.save(
+            temp_path,
+            format="JPEG",
+            quality=ROBOFLOW_JPEG_QUALITY,
+            optimize=True,
+        )
+        result = client.run_workflow(
+            workspace_name=ROBOFLOW_WORKSPACE_NAME,
+            workflow_id=ROBOFLOW_WORKFLOW_ID,
+            images={
+                ROBOFLOW_WORKFLOW_IMAGE_INPUT: temp_path,
+            },
+        )
     except Exception as exc:
         raise ServiceValidationError("Roboflow inference failed.") from exc
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
 
-    predictions = result.get("predictions") or []
+    predictions = extract_workflow_predictions(result)
     if not predictions:
         raise ServiceValidationError("No flagpole detected in the image.")
 
     best_prediction = max(predictions, key=lambda prediction: prediction.get("confidence", 0))
 
-    center_x = float(best_prediction["x"])
-    center_y = float(best_prediction["y"])
-    width = float(best_prediction["width"])
-    height = float(best_prediction["height"])
+    inverse_scale = 1 / scale
+    center_x = float(best_prediction["x"]) * inverse_scale
+    center_y = float(best_prediction["y"]) * inverse_scale
+    width = float(best_prediction["width"]) * inverse_scale
+    height = float(best_prediction["height"]) * inverse_scale
 
     x1 = center_x
     y1 = center_y - (height / 2)
