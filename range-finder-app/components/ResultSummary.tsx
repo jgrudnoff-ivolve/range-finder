@@ -1,5 +1,5 @@
 import React from "react";
-import { Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 
 import {
   CalibrationResponse,
@@ -17,7 +17,13 @@ type ResultState =
       profileName: string;
     }
   | { kind: "estimate"; data: EstimateResponse }
-  | { kind: "golf"; data: GolfEstimateResponse };
+  | {
+      kind: "golf";
+      data: GolfEstimateResponse;
+      imageUri: string;
+      imageWidth: number;
+      imageHeight: number;
+    };
 
 type Props = {
   result: ResultState;
@@ -57,6 +63,89 @@ function Stat({
       >
         {value}
       </Text>
+    </View>
+  );
+}
+
+function MeasurementPreview({
+  imageUri,
+  imageWidth,
+  imageHeight,
+  line,
+}: {
+  imageUri: string;
+  imageWidth: number;
+  imageHeight: number;
+  line: Pick<GolfEstimateResponse, "line_x1" | "line_y1" | "line_x2" | "line_y2">;
+}) {
+  const previewWidth = 280;
+  const previewHeight = (imageHeight / imageWidth) * previewWidth;
+  const scaleX = previewWidth / imageWidth;
+  const scaleY = previewHeight / imageHeight;
+  const x1 = line.line_x1 * scaleX;
+  const y1 = line.line_y1 * scaleY;
+  const x2 = line.line_x2 * scaleX;
+  const y2 = line.line_y2 * scaleY;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lineLength = Math.hypot(dx, dy);
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+  const markerSize = 10;
+
+  return (
+    <View style={{ gap: 10 }}>
+      <Text style={{ color: "#6f665b", fontSize: 12, fontWeight: "700" }}>
+        Flag detection preview
+      </Text>
+      <View
+        style={{
+          width: previewWidth,
+          height: previewHeight,
+          borderRadius: 18,
+          overflow: "hidden",
+          backgroundColor: "#ebe3d5",
+          alignSelf: "center",
+          position: "relative",
+        }}
+      >
+        <Image
+          source={{ uri: imageUri }}
+          style={{ width: previewWidth, height: previewHeight }}
+          resizeMode="cover"
+        />
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: midX - lineLength / 2,
+            top: midY - 2,
+            width: lineLength,
+            height: 4,
+            backgroundColor: "#ef5b2a",
+            borderRadius: 999,
+            transform: [{ rotate: `${angle}deg` }],
+          }}
+        />
+        {[{ x: x1, y: y1 }, { x: x2, y: y2 }].map((point, index) => (
+          <View
+            key={index}
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: point.x - markerSize / 2,
+              top: point.y - markerSize / 2,
+              width: markerSize,
+              height: markerSize,
+              borderRadius: markerSize / 2,
+              backgroundColor: index === 0 ? "#2f8f67" : "#ef5b2a",
+              borderWidth: 2,
+              borderColor: "#ffffff",
+            }}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -186,13 +275,21 @@ export function ResultSummary({ result }: Props) {
             {result.data.distance_m.toFixed(2)} m
           </Text>
           <Text style={{ color: "#6f665b", marginTop: 6, lineHeight: 20 }}>
-            Distance to the golf flag using your manual flag points and an assumed flag height of {result.data.assumed_object_height_cm / 100} m.
+            Distance to the golf flag using an assumed flag height of {result.data.assumed_object_height_cm / 100} m.
           </Text>
         </View>
 
         <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
           <Stat label="Distance" value={`${Math.round(result.data.distance_cm)} cm`} tone="accent" />
+          <Stat label="Assumed target" value="Golf flag" />
         </View>
+
+        <MeasurementPreview
+          imageUri={result.imageUri}
+          imageWidth={result.imageWidth}
+          imageHeight={result.imageHeight}
+          line={result.data}
+        />
 
       </View>
     );

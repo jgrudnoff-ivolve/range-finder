@@ -26,4 +26,8 @@ export type EstimateResponse = {
 
 export type GolfEstimateResponse = EstimateResponse & {
   assumed_object_height_cm: number;
+  line_x1: number;
+  line_y1: number;
+  line_x2: number;
+  line_y2: number;
 };

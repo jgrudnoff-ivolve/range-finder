@@ -1,5 +1,6 @@
 from services import *
 from PIL import Image, ImageDraw
+from unittest.mock import patch
 
 def test_line_measure():
     px, _, _ = measure_line(0, 0, 0, 200, 800, 600)
@@ -20,6 +21,7 @@ def test_estimate_golf_distance():
     result = estimate_golf_distance(
         GolfEstimateInput(
             focal_length_pixels=2400,
+            image=img,
             line_x1=398.0,
             line_y1=120.0,
             line_x2=398.0,
@@ -32,3 +34,30 @@ def test_estimate_golf_distance():
     assert result["distance_cm"] > 0
     assert result["assumed_object_height_cm"] == 213.0
     assert result["object_height_pixels"] > 0
+
+
+def test_estimate_golf_distance_with_roboflow_detection():
+    img = Image.new("RGB", (800, 600), (80, 150, 80))
+
+    with patch(
+        "services.detect_golf_flag_line_from_roboflow",
+        return_value={
+            "line_x1": 398.0,
+            "line_y1": 120.0,
+            "line_x2": 398.0,
+            "line_y2": 500.0,
+            "confidence": 0.87,
+            "class": "flagpole",
+        },
+    ):
+        result = estimate_golf_distance(
+            GolfEstimateInput(
+                focal_length_pixels=2400,
+                image=img,
+                image_width=800,
+                image_height=600,
+            )
+        )
+
+    assert result["distance_cm"] > 0
+    assert result["assumed_object_height_cm"] == 213.0

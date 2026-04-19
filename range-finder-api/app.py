@@ -95,10 +95,10 @@ async def estimate_distance_endpoint(
 async def estimate_golf_distance_endpoint(
     image: UploadFile = File(...),
     focal_length_pixels: float = Form(...),
-    line_x1: float = Form(...),
-    line_y1: float = Form(...),
-    line_x2: float = Form(...),
-    line_y2: float = Form(...),
+    line_x1: float | None = Form(None),
+    line_y1: float | None = Form(None),
+    line_x2: float | None = Form(None),
+    line_y2: float | None = Form(None),
 ):
     file_bytes = await image.read()
 
@@ -109,8 +109,9 @@ async def estimate_golf_distance_endpoint(
         result = estimate_golf_distance(
             GolfEstimateInput(
                 focal_length_pixels,
-                line_x1, line_y1, line_x2, line_y2,
+                img.image,
                 img.width, img.height,
+                line_x1, line_y1, line_x2, line_y2,
             )
         )
 

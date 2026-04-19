@@ -36,7 +36,7 @@ import {
 } from "./types";
 import { palettes, ScreenMode } from "./theme";
 
-const API_BASE_URL = "https://range-finder-1nzw.onrender.com";
+const API_BASE_URL = "http://localhost:8000";
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenMode>("estimate");
@@ -65,7 +65,13 @@ export default function App() {
         profileName: string;
       }
     | { kind: "estimate"; data: EstimateResponse }
-    | { kind: "golf"; data: GolfEstimateResponse }
+    | {
+        kind: "golf";
+        data: GolfEstimateResponse;
+        imageUri: string;
+        imageWidth: number;
+        imageHeight: number;
+      }
   >({ kind: "idle" });
   const [loading, setLoading] = useState(false);
 
@@ -294,11 +300,6 @@ export default function App() {
       return;
     }
 
-    if (points.length !== 2) {
-      Alert.alert("Missing points", "Please tap the top and bottom of the golf flag.");
-      return;
-    }
-
     if (!selectedProfile) {
       Alert.alert(
         "Missing calibration",
@@ -315,10 +316,15 @@ export default function App() {
         apiBaseUrl: API_BASE_URL,
         imageUri: imageUri!,
         focalLengthPixels: String(selectedProfile.focalLengthPixels),
-        points,
       });
 
-      setResult({ kind: "golf", data: golfEstimate });
+      setResult({
+        kind: "golf",
+        data: golfEstimate,
+        imageUri: imageUri!,
+        imageWidth,
+        imageHeight,
+      });
     } catch (error: any) {
       setResult({
         kind: "error",
@@ -522,7 +528,7 @@ export default function App() {
                 Golf Mode
               </Text>
               <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
-                Golf mode assumes a standard 2.13 metre golf flag. Mark the flag manually to estimate distance from the photo.
+                Golf mode assumes a standard 2.13 metre golf flag and detects the pin automatically from the photo.
               </Text>
             </View>
 
@@ -541,7 +547,7 @@ export default function App() {
                   Golf Photo
                 </Text>
                 <Text style={{ color: palette.muted, fontSize: 13 }}>
-                  Choose a photo of the pin, then tap the top and bottom of the flag.
+                  Choose a photo of the pin and the backend will try to detect the flagpole for you.
                 </Text>
               </View>
 
@@ -593,15 +599,6 @@ export default function App() {
                   </View>
                 </View>
               ) : null}
-
-              <ImageMeasurement
-                imageUri={imageUri}
-                imageWidth={imageWidth}
-                imageHeight={imageHeight}
-                points={points}
-                onAddPoint={handleAddPoint}
-                onClearPoints={handleClearPoints}
-              />
             </View>
 
             <View
@@ -618,7 +615,7 @@ export default function App() {
                 Golf Inputs
               </Text>
               <Text style={{ color: palette.muted, fontSize: 13 }}>
-                Golf mode always uses a 2.13 m flag height. Choose a saved calibration preset and mark the golf flag on the photo.
+                Golf mode always uses a 2.13 m flag height. Choose a saved calibration preset and let the system detect the golf flag automatically.
               </Text>
 
               <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}>

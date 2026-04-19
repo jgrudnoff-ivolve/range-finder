@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from app import app
 from PIL import Image, ImageDraw
 import io
+from unittest.mock import patch
 
 client = TestClient(app)
 
@@ -56,3 +57,29 @@ def test_estimate_golf():
     assert data["distance_cm"] > 0
     assert data["assumed_object_height_cm"] == 213.0
     assert data["object_height_pixels"] > 0
+
+
+def test_estimate_golf_with_roboflow_detection():
+    with patch(
+        "services.detect_golf_flag_line_from_roboflow",
+        return_value={
+            "line_x1": 398.0,
+            "line_y1": 120.0,
+            "line_x2": 398.0,
+            "line_y2": 500.0,
+            "confidence": 0.87,
+            "class": "flagpole",
+        },
+    ):
+        r = client.post(
+            "/estimate-golf-distance",
+            files={"image": ("golf.png", make_golf_img(), "image/png")},
+            data={
+                "focal_length_pixels": "2400",
+            },
+        )
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["distance_cm"] > 0
+    assert data["assumed_object_height_cm"] == 213.0
