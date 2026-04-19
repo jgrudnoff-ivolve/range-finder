@@ -27,6 +27,7 @@ type GolfEstimateInput = {
   apiBaseUrl: string;
   imageUri: string;
   focalLengthPixels: string;
+  zoomFactor?: string;
 };
 
 function inferMimeType(imageUri: string) {
@@ -149,6 +150,9 @@ export async function estimateGolfDistance(
 
   formData.append("image", await createImageFormPart(input.imageUri));
   formData.append("focal_length_pixels", input.focalLengthPixels);
+  if (input.zoomFactor) {
+    formData.append("zoom_factor", input.zoomFactor);
+  }
 
   const response = await fetch(
     `${input.apiBaseUrl}/estimate-golf-distance`,

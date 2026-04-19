@@ -44,6 +44,7 @@ class GolfEstimateInput:
     image: Image.Image
     image_width: int
     image_height: int
+    zoom_factor: float = 1.0
     line_x1: Optional[float] = None
     line_y1: Optional[float] = None
     line_x2: Optional[float] = None
@@ -92,6 +93,20 @@ def calculate_distance(real, px, focal):
     return (real * focal) / px
 
 
+def crop_image_for_zoom(image: Image.Image, zoom_factor: float):
+    if zoom_factor <= 1:
+        return image, 0.0, 0.0, 1.0
+
+    crop_width = image.width / zoom_factor
+    crop_height = image.height / zoom_factor
+    left = (image.width - crop_width) / 2
+    top = (image.height - crop_height) / 2
+    right = left + crop_width
+    bottom = top + crop_height
+
+    return image.crop((left, top, right, bottom)), left, top
+
+
 def get_roboflow_client():
     global _roboflow_client
 
@@ -111,10 +126,14 @@ def get_roboflow_client():
     return _roboflow_client
 
 
-def detect_golf_flag_line_from_roboflow(image: Image.Image):
+def detect_golf_flag_line_from_roboflow(image: Image.Image, zoom_factor: float = 1.0):
     client = get_roboflow_client()
 
     working_image = image.convert("RGB")
+    working_image, crop_offset_x, crop_offset_y = crop_image_for_zoom(
+        working_image,
+        zoom_factor,
+    )
     scale = 1.0
     max_dimension = max(working_image.size)
     if max_dimension > ROBOFLOW_MAX_IMAGE_DIMENSION:
@@ -147,8 +166,8 @@ def detect_golf_flag_line_from_roboflow(image: Image.Image):
     best_prediction = max(predictions, key=lambda prediction: prediction.get("confidence", 0))
 
     inverse_scale = 1 / scale
-    center_x = float(best_prediction["x"]) * inverse_scale
-    center_y = float(best_prediction["y"]) * inverse_scale
+    center_x = float(best_prediction["x"]) * inverse_scale + crop_offset_x
+    center_y = float(best_prediction["y"]) * inverse_scale + crop_offset_y
     width = float(best_prediction["width"]) * inverse_scale
     height = float(best_prediction["height"]) * inverse_scale
 
@@ -208,7 +227,7 @@ def estimate_golf_distance(data: GolfEstimateInput):
     validate_positive("focal_length_pixels", data.focal_length_pixels)
 
     if None in (data.line_x1, data.line_y1, data.line_x2, data.line_y2):
-        detected_line = detect_golf_flag_line_from_roboflow(data.image)
+        detected_line = detect_golf_flag_line_from_roboflow(data.image, data.zoom_factor)
         line_x1 = detected_line["line_x1"]
         line_y1 = detected_line["line_y1"]
         line_x2 = detected_line["line_x2"]

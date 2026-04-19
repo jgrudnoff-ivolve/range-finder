@@ -99,6 +99,7 @@ export function LiveGolfCamera({
       imageHeight: detection.imageHeight,
       previewWidth: previewSize.width,
       previewHeight: previewSize.height,
+      zoomFactor: detection.zoomFactor,
     });
   }, [detection, previewSize.height, previewSize.width]);
 
@@ -142,6 +143,7 @@ export function LiveGolfCamera({
         apiBaseUrl,
         imageUri: preparedFrame.uri,
         focalLengthPixels: String(focalLengthRef.current),
+        zoomFactor: String(zoomFactorRef.current),
       });
       const apiMs = Date.now() - apiStart;
       const totalMs = Date.now() - snapshotStart;
@@ -267,7 +269,16 @@ export function LiveGolfCamera({
     <View style={{ flex: 1, backgroundColor: "#09110c" }}>
       <View style={{ flex: 1 }} onLayout={handlePreviewLayout}>
         {snapshotUri ? (
-          <Image source={{ uri: snapshotUri }} style={{ flex: 1 }} resizeMode="cover" />
+          <View style={{ flex: 1, overflow: "hidden" }}>
+            <Image
+              source={{ uri: snapshotUri }}
+              style={{
+                flex: 1,
+                transform: [{ scale: previewScale }],
+              }}
+              resizeMode="cover"
+            />
+          </View>
         ) : (
           <View style={{ flex: 1, overflow: "hidden" }}>
             <CameraView

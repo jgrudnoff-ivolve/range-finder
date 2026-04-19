@@ -1,5 +1,3 @@
-import { Platform } from "react-native";
-
 import { CalibrationProfile, GolfEstimateResponse } from "../types";
 
 const DEFAULT_ONE_X_PROFILE: CalibrationProfile = {
@@ -72,12 +70,9 @@ export function clampZoomFactor(zoomFactor: number) {
 
 export function zoomFactorToCameraZoom(zoomFactor: number) {
   const clampedZoom = clampZoomFactor(zoomFactor);
-  const platformConfig =
-    Platform.OS === "web"
-      ? LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM.web
-      : LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM.native;
-
-  return platformConfig[clampedZoom as keyof typeof platformConfig] ?? 0;
+  return LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM.native[
+    clampedZoom as keyof typeof LIVE_GOLF_CAMERA_ZOOM_BY_PLATFORM.native
+  ] ?? 0;
 }
 
 export function getSupportedLiveGolfZoomSteps() {
@@ -85,67 +80,14 @@ export function getSupportedLiveGolfZoomSteps() {
 }
 
 export function getLiveGolfPreviewScale(zoomFactor: number) {
-  return Platform.OS === "web" ? clampZoomFactor(zoomFactor) : 1;
+  return clampZoomFactor(zoomFactor);
 }
 
 export async function prepareLiveGolfSnapshot(
   frame: PreparedLiveGolfSnapshot,
   zoomFactor: number
 ): Promise<PreparedLiveGolfSnapshot> {
-  const clampedZoom = clampZoomFactor(zoomFactor);
-
-  if (Platform.OS !== "web" || clampedZoom <= 1) {
-    return frame;
-  }
-
-  return cropWebSnapshot(frame, clampedZoom);
-}
-
-async function cropWebSnapshot(
-  frame: PreparedLiveGolfSnapshot,
-  zoomFactor: number
-): Promise<PreparedLiveGolfSnapshot> {
-  const image = await loadBrowserImage(frame.uri);
-  const cropWidth = image.width / zoomFactor;
-  const cropHeight = image.height / zoomFactor;
-  const cropX = (image.width - cropWidth) / 2;
-  const cropY = (image.height - cropHeight) / 2;
-
-  const canvas = document.createElement("canvas");
-  canvas.width = image.width;
-  canvas.height = image.height;
-
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("Could not prepare zoomed snapshot.");
-  }
-
-  context.drawImage(
-    image,
-    cropX,
-    cropY,
-    cropWidth,
-    cropHeight,
-    0,
-    0,
-    image.width,
-    image.height
-  );
-
-  return {
-    uri: canvas.toDataURL("image/jpeg", 0.82),
-    width: image.width,
-    height: image.height,
-  };
-}
-
-function loadBrowserImage(uri: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new window.Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not load captured snapshot."));
-    image.src = uri;
-  });
+  return frame;
 }
 
 export function interpolateLiveGolfFocalLength(
@@ -162,14 +104,23 @@ export function projectGolfDetectionLine(params: {
   imageHeight: number;
   previewWidth: number;
   previewHeight: number;
+  zoomFactor: number;
 }): ProjectedGolfLine | null {
-  const { detection, imageWidth, imageHeight, previewWidth, previewHeight } = params;
+  const {
+    detection,
+    imageWidth,
+    imageHeight,
+    previewWidth,
+    previewHeight,
+    zoomFactor,
+  } = params;
 
   if (!imageWidth || !imageHeight || !previewWidth || !previewHeight) {
     return null;
   }
 
-  const scale = Math.max(previewWidth / imageWidth, previewHeight / imageHeight);
+  const zoomScale = clampZoomFactor(zoomFactor);
+  const scale = Math.max(previewWidth / imageWidth, previewHeight / imageHeight) * zoomScale;
   const renderedWidth = imageWidth * scale;
   const renderedHeight = imageHeight * scale;
   const offsetX = (previewWidth - renderedWidth) / 2;

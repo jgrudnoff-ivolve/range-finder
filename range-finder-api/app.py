@@ -97,6 +97,7 @@ async def estimate_distance_endpoint(
 async def estimate_golf_distance_endpoint(
     image: UploadFile = File(...),
     focal_length_pixels: float = Form(...),
+    zoom_factor: float = Form(1.0),
     line_x1: float | None = Form(None),
     line_y1: float | None = Form(None),
     line_x2: float | None = Form(None),
@@ -111,6 +112,17 @@ async def estimate_golf_distance_endpoint(
         validate_upload(image.content_type, file_bytes)
         img = load_and_validate_image(file_bytes)
         validation_ms = (perf_counter() - validation_started) * 1000
+        print(
+            "[estimate-golf-distance] request",
+            {
+                "content_type": image.content_type,
+                "file_size_bytes": len(file_bytes),
+                "image_width": img.width,
+                "image_height": img.height,
+                "zoom_factor": round(zoom_factor, 4),
+                "focal_length_pixels": round(focal_length_pixels, 2),
+            },
+        )
 
         estimate_started = perf_counter()
         result = estimate_golf_distance(
@@ -118,6 +130,7 @@ async def estimate_golf_distance_endpoint(
                 focal_length_pixels,
                 img.image,
                 img.width, img.height,
+                zoom_factor,
                 line_x1, line_y1, line_x2, line_y2,
             )
         )
