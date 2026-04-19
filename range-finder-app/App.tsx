@@ -35,7 +35,7 @@ import {
 } from "./types";
 import { palettes, ScreenMode } from "./theme";
 
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = "https://range-finder-1nzw.onrender.com";
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenMode>("estimate");

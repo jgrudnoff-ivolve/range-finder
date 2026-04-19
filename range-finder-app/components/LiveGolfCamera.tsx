@@ -279,49 +279,6 @@ export function LiveGolfCamera({
                 gap: 16,
               }}
             >
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: "rgba(8, 15, 11, 0.72)",
-                  borderRadius: 22,
-                  paddingHorizontal: 16,
-                  paddingVertical: 14,
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.12)",
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#b7d6bf",
-                    fontSize: 12,
-                    fontWeight: "800",
-                    textTransform: "uppercase",
-                    letterSpacing: 1,
-                  }}
-                >
-                  Live Golf
-                </Text>
-                <Text
-                  style={{
-                    color: "#ffffff",
-                    fontSize: 28,
-                    fontWeight: "800",
-                    marginTop: 4,
-                  }}
-                >
-                  Range Finder
-                </Text>
-                <Text
-                  style={{
-                    color: "rgba(255,255,255,0.78)",
-                    lineHeight: 20,
-                    marginTop: 4,
-                  }}
-                >
-                  Aim at the pin and keep the camera open while distance updates in the live view.
-                </Text>
-              </View>
-
               <Pressable
                 onPress={onOpenMenu}
                 style={{
@@ -330,6 +287,7 @@ export function LiveGolfCamera({
                   paddingHorizontal: 14,
                   paddingVertical: 12,
                   minWidth: 88,
+                  marginLeft: "auto",
                   borderWidth: 1,
                   borderColor: "rgba(255,255,255,0.12)",
                 }}
@@ -507,15 +465,6 @@ export function LiveGolfCamera({
                 borderColor: "rgba(255,255,255,0.12)",
               }}
             >
-              <View style={{ gap: 6 }}>
-                <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 17 }}>
-                  Zoom
-                </Text>
-                <Text style={{ color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>
-                  Live mode interpolates focal length between your 1x and 3x calibrations while you zoom.
-                </Text>
-              </View>
-
               <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
                 {ZOOM_STEPS.map((step) => {
                   const active = Math.abs(step - zoomFactor) < 0.01;
@@ -545,18 +494,6 @@ export function LiveGolfCamera({
                     </Pressable>
                   );
                 })}
-              </View>
-
-              <View style={{ gap: 4 }}>
-                <Text style={{ color: "#b7d6bf", fontWeight: "700", fontSize: 12 }}>
-                  Calibration curve
-                </Text>
-                <Text style={{ color: "#ffffff", lineHeight: 20 }}>
-                  1x: {calibration.oneX.name} ({Math.round(calibration.oneX.focalLengthPixels)} px)
-                </Text>
-                <Text style={{ color: "#ffffff", lineHeight: 20 }}>
-                  3x: {calibration.threeX.name} ({Math.round(calibration.threeX.focalLengthPixels)} px)
-                </Text>
               </View>
 
               {mountError ? (
