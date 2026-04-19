@@ -114,18 +114,24 @@ export function LiveGolfCamera({
     captureInFlightRef.current = true;
     setDetecting(true);
     setStatusMessage("Analyzing snapshot...");
+    const snapshotStart = Date.now();
 
     try {
+      const captureStart = Date.now();
       const frame = await cameraRef.current.takePictureAsync({
         quality: 0.4,
         shutterSound: false,
       });
+      const captureMs = Date.now() - captureStart;
 
+      const apiStart = Date.now();
       const result = await estimateGolfDistance({
         apiBaseUrl,
         imageUri: frame.uri,
         focalLengthPixels: String(focalLengthRef.current),
       });
+      const apiMs = Date.now() - apiStart;
+      const totalMs = Date.now() - snapshotStart;
 
       setSnapshotUri(frame.uri);
 
@@ -142,12 +148,27 @@ export function LiveGolfCamera({
 
       setStatusMessage("Snapshot measured.");
       setMountError(null);
+      console.log("[LiveGolfCamera] Snapshot timing", {
+        capture_ms: captureMs,
+        api_ms: apiMs,
+        total_ms: totalMs,
+        image_width: frame.width,
+        image_height: frame.height,
+        zoom_factor: zoomFactorRef.current,
+        focal_length_pixels: focalLengthRef.current,
+      });
     } catch (error: any) {
       setSnapshotUri(null);
       setDetection(null);
       setStatusMessage(
         error?.message || "Could not detect the flagpole in this snapshot."
       );
+      console.log("[LiveGolfCamera] Snapshot timing failed", {
+        total_ms: Date.now() - snapshotStart,
+        zoom_factor: zoomFactorRef.current,
+        focal_length_pixels: focalLengthRef.current,
+        error_message: error?.message || "Unknown error",
+      });
     } finally {
       captureInFlightRef.current = false;
       setDetecting(false);
