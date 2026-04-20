@@ -11,17 +11,16 @@ import {
 } from "react-native";
 import {
   Camera,
-  CameraDevice,
   useCameraDevice,
   useCameraPermission,
 } from "react-native-vision-camera";
 
 import { estimateGolfDistance } from "../services/api";
 import {
-  LiveGolfLensMode,
+  LiveGolfPreset,
   prepareLiveGolfSnapshot,
   projectGolfDetectionLine,
-  resolveLiveGolfCalibration,
+  resolveLiveGolfPresets,
 } from "../services/liveGolf";
 import { CalibrationProfile, GolfEstimateResponse } from "../types";
 import { AppPalette } from "../theme";
@@ -31,7 +30,7 @@ type DetectionState = {
   imageWidth: number;
   imageHeight: number;
   focalLengthPixels: number;
-  modeLabel: string;
+  presetLabel: string;
   capturedAt: number;
 };
 
@@ -42,23 +41,36 @@ type Props = {
   onOpenMenu: () => void;
 };
 
-type NativeLensMode = LiveGolfLensMode & {
-  device: CameraDevice | undefined;
-  zoom: number;
-};
-
 export function LiveGolfCamera({
   apiBaseUrl,
   palette,
   profiles,
   onOpenMenu,
 }: Props) {
+  function clampZoomValue(value: number, minZoom = 1, maxZoom = 1) {
+    return Math.min(Math.max(value, minZoom), maxZoom);
+  }
+
+  function toCameraZoomValue(userZoomFactor: number, neutralZoom = 1, minZoom = 1, maxZoom = 1) {
+    const requestedCameraZoom = neutralZoom * userZoomFactor;
+    return clampZoomValue(requestedCameraZoom, minZoom, maxZoom);
+  }
+
+  function fromCameraZoomValue(cameraZoom: number, neutralZoom = 1) {
+    if (!neutralZoom) {
+      return cameraZoom;
+    }
+
+    return cameraZoom / neutralZoom;
+  }
+
   const { hasPermission, requestPermission } = useCameraPermission();
   const [cameraReady, setCameraReady] = useState(false);
-  const [selectedModeId, setSelectedModeId] = useState<NativeLensMode["id"]>("1x");
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+  const [currentZoomFactor, setCurrentZoomFactor] = useState(1);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const [statusMessage, setStatusMessage] = useState(
-    "Frame the pin with a real camera lens, then capture a snapshot to measure it."
+    "Frame the pin with a saved zoom calibration, then capture a snapshot to measure it."
   );
   const [mountError, setMountError] = useState<string | null>(null);
   const [detecting, setDetecting] = useState(false);
@@ -68,80 +80,46 @@ export function LiveGolfCamera({
   const cameraRef = useRef<Camera | null>(null);
   const captureInFlightRef = useRef(false);
 
-  const calibration = useMemo(
-    () => resolveLiveGolfCalibration(profiles),
-    [profiles]
+  const backDevice = useCameraDevice("back");
+  const presets = useMemo(() => resolveLiveGolfPresets(profiles), [profiles]);
+  const selectedPreset = useMemo(
+    () => presets.find((preset) => preset.id === selectedPresetId) ?? presets[0] ?? null,
+    [presets, selectedPresetId]
   );
-
-  const defaultBackDevice = useCameraDevice("back");
-  const wideAngleDevice = useCameraDevice("back", {
-    physicalDevices: ["wide-angle"],
-  });
-  const telephotoDevice = useCameraDevice("back", {
-    physicalDevices: ["telephoto"],
-  });
-
-  const lensModes = useMemo<NativeLensMode[]>(() => {
-    if (Platform.OS === "android") {
-      const androidBackDevice = defaultBackDevice;
-      const maxZoom = androidBackDevice?.maxZoom ?? 1;
-      const modes: NativeLensMode[] = [
-        {
-          id: "1x",
-          label: "1x lens",
-          focalLengthPixels: calibration.oneX.focalLengthPixels,
-          lens: androidBackDevice ? "default-back" : null,
-          device: androidBackDevice,
-          zoom: 1,
-        },
-      ];
-
-      if (androidBackDevice && maxZoom >= 3) {
-        modes.push({
-          id: "3x",
-          label: "3x telephoto",
-          focalLengthPixels: calibration.threeX.focalLengthPixels,
-          lens: androidBackDevice.isVirtualDevice ? "virtual-telephoto" : "zoom-3x",
-          device: androidBackDevice,
-          zoom: Math.min(3, maxZoom),
-        });
-      }
-
-      return modes;
+  const cameraConfig = useMemo(() => {
+    if (!selectedPreset || !backDevice) {
+      return null;
     }
 
-    const modes: NativeLensMode[] = [
-      {
-        id: "1x",
-        label: "1x lens",
-        focalLengthPixels: calibration.oneX.focalLengthPixels,
-        lens: wideAngleDevice ? "wide-angle" : defaultBackDevice ? "default-back" : null,
-        device: wideAngleDevice ?? defaultBackDevice,
-        zoom: 1,
-      },
-    ];
+    const minZoom = backDevice.minZoom ?? 1;
+    const maxZoom = backDevice.maxZoom ?? Math.max(1, selectedPreset.zoomFactor);
+    const neutralZoom = backDevice.neutralZoom ?? 1;
+    const zoom = toCameraZoomValue(currentZoomFactor, neutralZoom, minZoom, maxZoom);
 
-    if (telephotoDevice) {
-      modes.push({
-        id: "3x",
-        label: "3x telephoto",
-        focalLengthPixels: calibration.threeX.focalLengthPixels,
-        lens: "telephoto",
-        device: telephotoDevice,
-        zoom: 1,
-      });
+    return {
+      device: backDevice,
+      minZoom,
+      maxZoom,
+      neutralZoom,
+      zoom,
+      userZoomFactor: fromCameraZoomValue(zoom, neutralZoom),
+      zoomStep: 0.1,
+    };
+  }, [backDevice, currentZoomFactor, selectedPreset]);
+
+  useEffect(() => {
+    if (!selectedPreset && presets.length > 0) {
+      setSelectedPresetId(presets[0].id);
+    }
+  }, [presets, selectedPreset]);
+
+  useEffect(() => {
+    if (!selectedPreset || !backDevice) {
+      return;
     }
 
-    return modes;
-  }, [calibration.oneX.focalLengthPixels, calibration.threeX.focalLengthPixels, defaultBackDevice, telephotoDevice, wideAngleDevice]);
-
-  const selectedMode = useMemo(
-    () => lensModes.find((mode) => mode.id === selectedModeId) ?? lensModes[0] ?? null,
-    [lensModes, selectedModeId]
-  );
-  const selectedCalibrationLabel = selectedMode
-    ? `${selectedMode.id} calibration`
-    : "Lens calibration";
+    setCurrentZoomFactor(Math.max(0.1, selectedPreset.zoomFactor));
+  }, [backDevice, selectedPreset]);
 
   const projectedLine = useMemo(() => {
     if (!detection || !previewSize.width || !previewSize.height) return null;
@@ -155,23 +133,23 @@ export function LiveGolfCamera({
     });
   }, [detection, previewSize.height, previewSize.width]);
 
-  useEffect(() => {
-    if (selectedMode) {
-      return;
-    }
-
-    if (lensModes.length > 0) {
-      setSelectedModeId(lensModes[0].id);
-    }
-  }, [lensModes, selectedMode]);
-
   function handlePreviewLayout(event: LayoutChangeEvent) {
     const { width, height } = event.nativeEvent.layout;
     setPreviewSize({ width, height });
   }
 
+  async function getRenderedImageSize(uri: string, fallbackWidth: number, fallbackHeight: number) {
+    return await new Promise<{ width: number; height: number }>((resolve) => {
+      Image.getSize(
+        uri,
+        (width, height) => resolve({ width, height }),
+        () => resolve({ width: fallbackWidth, height: fallbackHeight })
+      );
+    });
+  }
+
   async function handleSnapshot() {
-    if (!cameraReady || !hasPermission || !cameraRef.current || !selectedMode?.device) {
+    if (!cameraReady || !hasPermission || !cameraRef.current || !cameraConfig || !selectedPreset) {
       return;
     }
 
@@ -195,13 +173,22 @@ export function LiveGolfCamera({
         width: photo.width,
         height: photo.height,
       });
+      const renderedFrameSize = await getRenderedImageSize(
+        preparedFrame.uri,
+        preparedFrame.width,
+        preparedFrame.height
+      );
       const captureMs = Date.now() - captureStart;
 
       const apiStart = Date.now();
       const result = await estimateGolfDistance({
         apiBaseUrl,
         imageUri: preparedFrame.uri,
-        focalLengthPixels: String(selectedMode.focalLengthPixels),
+        focalLengthPixels: String(selectedPreset.focalLengthPixels),
+        // The captured image already reflects the selected native camera zoom.
+        // Sending that zoom factor again would make the backend crop a second time
+        // and shift the returned detection line off the displayed snapshot.
+        zoomFactor: "1",
       });
       const apiMs = Date.now() - apiStart;
       const totalMs = Date.now() - snapshotStart;
@@ -211,10 +198,10 @@ export function LiveGolfCamera({
       startTransition(() => {
         setDetection({
           result,
-          imageWidth: preparedFrame.width,
-          imageHeight: preparedFrame.height,
-          focalLengthPixels: selectedMode.focalLengthPixels,
-          modeLabel: selectedMode.label,
+          imageWidth: renderedFrameSize.width,
+          imageHeight: renderedFrameSize.height,
+          focalLengthPixels: selectedPreset.focalLengthPixels,
+          presetLabel: selectedPreset.label,
           capturedAt: Date.now(),
         });
       });
@@ -227,11 +214,15 @@ export function LiveGolfCamera({
         total_ms: totalMs,
         image_width: preparedFrame.width,
         image_height: preparedFrame.height,
-        lens_mode: selectedMode.id,
-        selected_lens: selectedMode.lens ?? "default",
-        selected_zoom: selectedMode.zoom,
-        focal_length_pixels: selectedMode.focalLengthPixels,
-        calibration_zoom_level: selectedMode.id,
+        rendered_image_width: renderedFrameSize.width,
+        rendered_image_height: renderedFrameSize.height,
+        preset_id: selectedPreset.id,
+        selected_zoom: cameraConfig.userZoomFactor,
+        camera_zoom_value: cameraConfig.zoom,
+        requested_zoom: selectedPreset.zoomFactor,
+        camera_device_id: cameraConfig.device.id,
+        camera_mode: "back-camera",
+        focal_length_pixels: selectedPreset.focalLengthPixels,
       });
     } catch (error: any) {
       setSnapshotUri(null);
@@ -241,11 +232,13 @@ export function LiveGolfCamera({
       );
       console.log("[LiveGolfCamera] Snapshot timing failed", {
         total_ms: Date.now() - snapshotStart,
-        lens_mode: selectedMode?.id ?? "1x",
-        selected_lens: selectedMode?.lens ?? "default",
-        selected_zoom: selectedMode?.zoom ?? 1,
-        focal_length_pixels: selectedMode?.focalLengthPixels ?? calibration.oneX.focalLengthPixels,
-        calibration_zoom_level: selectedMode?.id ?? "1x",
+        preset_id: selectedPreset?.id ?? "none",
+        selected_zoom: cameraConfig?.userZoomFactor ?? 1,
+        camera_zoom_value: cameraConfig?.zoom ?? 1,
+        requested_zoom: selectedPreset?.zoomFactor ?? 1,
+        camera_device_id: cameraConfig?.device.id ?? "none",
+        camera_mode: "back-camera",
+        focal_length_pixels: selectedPreset?.focalLengthPixels ?? 0,
         error_message: error?.message || "Unknown error",
       });
     } finally {
@@ -257,7 +250,7 @@ export function LiveGolfCamera({
   function handleRetake() {
     setSnapshotUri(null);
     setDetection(null);
-    setStatusMessage("Frame the pin with a real camera lens, then capture a snapshot to measure it.");
+    setStatusMessage("Frame the pin with a saved zoom calibration, then capture a snapshot to measure it.");
     setMountError(null);
   }
 
@@ -288,7 +281,7 @@ export function LiveGolfCamera({
             Native Mobile Only
           </Text>
           <Text style={{ color: palette.muted, lineHeight: 22 }}>
-            Accurate Golf mode now depends on native lens selection. Open this in the iOS or Android app so the app can use real wide and telephoto camera hardware.
+            Accurate Golf mode depends on saved native zoom calibrations. Open this in the iOS or Android app.
           </Text>
           <Pressable
             onPress={onOpenMenu}
@@ -334,7 +327,7 @@ export function LiveGolfCamera({
             Camera Access Needed
           </Text>
           <Text style={{ color: palette.muted, lineHeight: 22 }}>
-            Camera access is needed so you can capture a flag snapshot and measure it with the device&apos;s real camera lenses.
+            Camera access is needed so you can capture a flag snapshot and measure it with a saved zoom calibration.
           </Text>
           <Pressable
             onPress={() => {
@@ -355,7 +348,7 @@ export function LiveGolfCamera({
     );
   }
 
-  if (!selectedMode?.device) {
+  if (!cameraConfig || !selectedPreset) {
     return (
       <SafeAreaView
         style={{
@@ -379,10 +372,10 @@ export function LiveGolfCamera({
             Live Golf
           </Text>
           <Text style={{ color: palette.text, fontWeight: "800", fontSize: 30 }}>
-            Camera Still Loading
+            Camera Or Presets Loading
           </Text>
           <Text style={{ color: palette.muted, lineHeight: 22 }}>
-            The native camera devices are still loading, or this build does not yet expose the required rear camera hardware.
+            The native camera is still loading, or there are no saved zoom calibrations yet.
           </Text>
           <ActivityIndicator color={palette.accent} />
         </View>
@@ -397,13 +390,13 @@ export function LiveGolfCamera({
           <Image source={{ uri: snapshotUri }} style={{ flex: 1 }} resizeMode="cover" />
         ) : (
           <Camera
-            key={`${selectedMode.id}-${selectedMode.device.id}`}
+            key={cameraConfig.device.id}
             ref={cameraRef}
             style={{ flex: 1 }}
-            device={selectedMode.device}
+            device={cameraConfig.device}
             isActive
             photo
-            zoom={selectedMode.zoom}
+            zoom={cameraConfig.zoom}
             onInitialized={() => setCameraReady(true)}
             onError={(error) => {
               setMountError(error.message);
@@ -480,7 +473,7 @@ export function LiveGolfCamera({
                 }}
               >
                 <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 12 }}>
-                  {selectedMode.label}
+                  Preset {selectedPreset.label}
                 </Text>
               </View>
               <View
@@ -492,23 +485,33 @@ export function LiveGolfCamera({
                 }}
               >
                 <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 12 }}>
-                  {selectedCalibrationLabel}
+                  Camera zoom {cameraConfig.userZoomFactor.toFixed(2)}x
                 </Text>
               </View>
-              {detection ? (
-                <View
-                  style={{
-                    backgroundColor: "rgba(8, 15, 11, 0.72)",
-                    borderRadius: 999,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                  }}
-                >
-                  <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 12 }}>
-                    Snapshot {new Date(detection.capturedAt).toLocaleTimeString()}
-                  </Text>
-                </View>
-              ) : null}
+              <View
+                style={{
+                  backgroundColor: "rgba(8, 15, 11, 0.72)",
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 12 }}>
+                  Back camera
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: "rgba(8, 15, 11, 0.72)",
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 12 }}>
+                  {Math.round(selectedPreset.focalLengthPixels)} px
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -620,12 +623,12 @@ export function LiveGolfCamera({
               }}
             >
               <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                {lensModes.map((mode) => {
-                  const active = mode.id === selectedMode?.id;
+                {presets.map((preset) => {
+                  const active = preset.id === selectedPreset.id;
                   return (
                     <Pressable
-                      key={mode.id}
-                      onPress={() => setSelectedModeId(mode.id)}
+                      key={preset.id}
+                      onPress={() => setSelectedPresetId(preset.id)}
                       disabled={!!snapshotUri}
                       style={{
                         borderRadius: 999,
@@ -645,26 +648,12 @@ export function LiveGolfCamera({
                           fontWeight: "800",
                         }}
                       >
-                        {mode.label}
+                        {preset.label}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-
-              {telephotoDevice ? null : (
-                <View
-                  style={{
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                    borderRadius: 18,
-                    padding: 12,
-                  }}
-                >
-                  <Text style={{ color: "rgba(255,255,255,0.88)", lineHeight: 20 }}>
-                    No telephoto camera device is exposed in this build on this phone yet, so only the default rear lens is available.
-                  </Text>
-                </View>
-              )}
 
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <Pressable

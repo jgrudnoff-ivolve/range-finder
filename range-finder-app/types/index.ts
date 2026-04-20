@@ -9,13 +9,15 @@ export type CalibrationProfile = {
   id: string;
   name: string;
   focalLengthPixels: number;
-  zoomLevel?: 1 | 3;
+  zoomLevel?: number;
   actualZoomFactor?: number;
 };
 
 export type CalibrationResponse = {
   focal_length_pixels: number;
   object_height_pixels: number;
+  reprojection_error?: number;
+  checkerboard_pattern?: string;
 };
 
 export type EstimateResponse = {

@@ -34,12 +34,6 @@ def health():
 @app.post("/calibrate-focal-length")
 async def calibrate_focal_length_endpoint(
     image: UploadFile = File(...),
-    real_object_height_cm: float = Form(...),
-    known_distance_cm: float = Form(...),
-    line_x1: float = Form(...),
-    line_y1: float = Form(...),
-    line_x2: float = Form(...),
-    line_y2: float = Form(...),
 ):
     file_bytes = await image.read()
 
@@ -49,9 +43,7 @@ async def calibrate_focal_length_endpoint(
 
         result = calibrate_focal_length(
             CalibrationInput(
-                real_object_height_cm,
-                known_distance_cm,
-                line_x1, line_y1, line_x2, line_y2,
+                img.image,
                 img.width, img.height,
             )
         )

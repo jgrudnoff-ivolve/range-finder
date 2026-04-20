@@ -10,9 +10,6 @@ import {
 type CalibrateInput = {
   apiBaseUrl: string;
   imageUri: string;
-  realObjectHeightCm: string;
-  knownDistanceCm: string;
-  points: Point[];
 };
 
 type EstimateInput = {
@@ -75,12 +72,6 @@ export async function calibrateFocalLength(
   const formData = new FormData();
 
   formData.append("image", await createImageFormPart(input.imageUri));
-  formData.append("line_x1", String(input.points[0].x));
-  formData.append("line_y1", String(input.points[0].y));
-  formData.append("line_x2", String(input.points[1].x));
-  formData.append("line_y2", String(input.points[1].y));
-  formData.append("real_object_height_cm", input.realObjectHeightCm);
-  formData.append("known_distance_cm", input.knownDistanceCm);
 
   const response = await fetch(
     `${input.apiBaseUrl}/calibrate-focal-length`,

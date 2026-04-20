@@ -14,7 +14,7 @@ type ResultState =
   | {
       kind: "calibration";
       data: CalibrationResponse;
-      zoomLevel: 1 | 3;
+      zoomFactor: number;
     }
   | { kind: "estimate"; data: EstimateResponse }
   | {
@@ -231,10 +231,10 @@ export function ResultSummary({ result }: Props) {
               marginTop: 4,
             }}
           >
-            {result.zoomLevel}x lens
+            {result.zoomFactor.toFixed(1)}x checkerboard saved
           </Text>
           <Text style={{ color: "#6f665b", marginTop: 6, lineHeight: 20 }}>
-            This focal pixel value can now be reused whenever you estimate distance with the {result.zoomLevel}x lens.
+            This focal pixel value came from the checkerboard capture and can now be reused whenever you capture with the saved {result.zoomFactor.toFixed(1)}x zoom preset.
           </Text>
         </View>
 
@@ -244,6 +244,12 @@ export function ResultSummary({ result }: Props) {
             value={`${Math.round(result.data.focal_length_pixels)} px`}
             tone="accent"
           />
+          {result.data.reprojection_error !== undefined ? (
+            <Stat
+              label="Reprojection error"
+              value={result.data.reprojection_error.toFixed(4)}
+            />
+          ) : null}
         </View>
       </View>
     );

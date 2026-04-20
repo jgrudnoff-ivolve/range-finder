@@ -12,6 +12,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 
 import { AppHero } from "./components/AppHero";
+import { CalibrationCameraCapture } from "./components/CalibrationCameraCapture";
 import { CalibrationProfilesCard } from "./components/CalibrationProfilesCard";
 import { ImageMeasurement } from "./components/ImageMeasurement";
 import { LiveGolfCamera } from "./components/LiveGolfCamera";
@@ -36,6 +37,7 @@ import {
 import { palettes, ScreenMode } from "./theme";
 
 const API_BASE_URL = "https://range-finder-1nzw.onrender.com";
+const REQUIRED_CALIBRATION_ZOOMS = [1, 3, 5];
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenMode>("estimate");
@@ -48,10 +50,10 @@ export default function App() {
   const [points, setPoints] = useState<Point[]>([]);
 
   const [realObjectHeightCm, setRealObjectHeightCm] = useState("8.56");
-  const [knownDistanceCm, setKnownDistanceCm] = useState("50");
   const [focalLengthPixels, setFocalLengthPixels] = useState("");
-  const [calibrationZoomLevel, setCalibrationZoomLevel] = useState<1 | 3>(1);
   const [profiles, setProfiles] = useState<CalibrationProfile[]>([]);
+  const [calibrationCameraOpen, setCalibrationCameraOpen] = useState(false);
+  const [calibrationTargetZoom, setCalibrationTargetZoom] = useState<number>(1);
 
   const [result, setResult] = useState<
     | { kind: "idle" }
@@ -60,7 +62,7 @@ export default function App() {
     | {
         kind: "calibration";
         data: CalibrationResponse;
-        zoomLevel: 1 | 3;
+        zoomFactor: number;
       }
     | { kind: "estimate"; data: EstimateResponse }
   >({ kind: "idle" });
@@ -200,37 +202,25 @@ export default function App() {
     return true;
   }
 
-  async function handleCalibrationSubmit() {
-    if (!validateSharedInputs()) return;
-
-    if (!knownDistanceCm) {
-      Alert.alert("Missing value", "Please enter the known distance.");
-      return;
-    }
-
+  async function calibrateCapturedImage(imageUriToCalibrate: string, zoomFactor: number) {
     try {
       setLoading(true);
-      setResult({ kind: "loading", message: "Calculating focal length..." });
+      setResult({ kind: "loading", message: `Calibrating ${zoomFactor.toFixed(1)}x checkerboard...` });
 
       const calibration = await calibrateFocalLength({
         apiBaseUrl: API_BASE_URL,
-        imageUri: imageUri!,
-        realObjectHeightCm,
-        knownDistanceCm,
-        points,
+        imageUri: imageUriToCalibrate,
       });
 
       setFocalLengthPixels(String(calibration.focal_length_pixels));
+      const normalizedZoomLabel = zoomFactor.toFixed(1);
 
       const profile: CalibrationProfile = {
-        id: calibrationZoomLevel === 1 ? "default-1x" : "default-3x",
-        name:
-          calibrationZoomLevel === 1
-            ? "Rear Camera 1x Lens"
-            : "Rear Camera 3x Telephoto",
+        id: `zoom-${normalizedZoomLabel.replace(".", "_")}x`,
+        name: `Rear Camera ${normalizedZoomLabel}x`,
         focalLengthPixels: calibration.focal_length_pixels,
-        zoomLevel: calibrationZoomLevel,
-        actualZoomFactor: calibrationZoomLevel,
+        zoomLevel: zoomFactor,
+        actualZoomFactor: zoomFactor,
       };
 
       await saveCalibrationProfile(profile);
@@ -238,7 +228,7 @@ export default function App() {
       setResult({
         kind: "calibration",
         data: calibration,
-        zoomLevel: calibrationZoomLevel,
+        zoomFactor,
       });
     } catch (error: any) {
       setResult({ kind: "error", message: error.message || "Calibration failed" });
@@ -292,6 +282,20 @@ export default function App() {
     await loadProfiles();
   }
 
+  function handleCalibrationCapture(result: {
+    uri: string;
+    width: number;
+    height: number;
+    zoomFactor: number;
+  }) {
+    setCalibrationCameraOpen(false);
+    setImageUri(result.uri);
+    setImageWidth(result.width || 1);
+    setImageHeight(result.height || 1);
+    setPoints([]);
+    void calibrateCapturedImage(result.uri, calibrationTargetZoom);
+  }
+
   if (screen === "golf") {
     return (
       <View style={{ flex: 1, backgroundColor: palette.bg }}>
@@ -313,6 +317,17 @@ export default function App() {
           }}
         />
       </View>
+    );
+  }
+
+  if (screen === "calibration" && calibrationCameraOpen) {
+    return (
+      <CalibrationCameraCapture
+        palette={palette}
+        targetZoomFactor={calibrationTargetZoom}
+        onClose={() => setCalibrationCameraOpen(false)}
+        onCapture={handleCalibrationCapture}
+      />
     );
   }
 
@@ -528,7 +543,7 @@ export default function App() {
                 Calibration Setup
               </Text>
               <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
-                Calibration is an occasional setup step. Use a photo with a known object size and distance, then save the resulting focal length for later.
+                Calibration now uses a checkerboard photo. Capture one centered checkerboard image at each required zoom level and the app will save the focal length automatically.
               </Text>
               <View
                 style={{
@@ -542,7 +557,7 @@ export default function App() {
                   One-time workflow
                 </Text>
                 <Text style={{ color: palette.text, lineHeight: 20 }}>
-                  Most people only do this once per device or zoom level, then return to the estimate page for day-to-day use.
+                  Capture the checkerboard once at 1x, 3x, and 5x for each device. After that, day-to-day use stays on the estimate and golf screens.
                 </Text>
               </View>
             </View>
@@ -559,146 +574,87 @@ export default function App() {
             >
               <View style={{ gap: 4 }}>
                 <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-                  Calibration Photo
+                  Required Zooms
                 </Text>
                 <Text style={{ color: palette.muted, fontSize: 13 }}>
-                  Choose a reference image and mark the same object from top to bottom.
+                  Use the in-app camera to capture a checkerboard at each required zoom. The zoom is locked automatically for each capture.
                 </Text>
               </View>
 
-              <Pressable
-                onPress={pickImage}
-                style={{
-                  backgroundColor: palette.accent,
-                  paddingVertical: 14,
-                  borderRadius: 16,
-                }}
-              >
-                <Text
-                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
-                >
-                  {imageUri ? "Choose a different image" : "Choose image"}
-                </Text>
-              </Pressable>
+              {REQUIRED_CALIBRATION_ZOOMS.map((zoom) => {
+                const existingProfile = profiles.find(
+                  (profile) => Math.abs((profile.actualZoomFactor ?? profile.zoomLevel ?? 0) - zoom) < 0.05
+                );
 
-              <ImageMeasurement
-                imageUri={imageUri}
-                imageWidth={imageWidth}
-                imageHeight={imageHeight}
-                points={points}
-                onAddPoint={handleAddPoint}
-                onClearPoints={handleClearPoints}
-              />
-            </View>
-
-            <View
-              style={{
-                backgroundColor: palette.surface,
-                borderRadius: 24,
-                padding: 18,
-                borderWidth: 1,
-                borderColor: palette.border,
-                gap: 10,
-              }}
-            >
-              <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-                Calibration Inputs
-              </Text>
-              <Text style={{ color: palette.muted, fontSize: 13 }}>
-                Enter the real-world dimensions for the reference shot, then save the focal pixel value for a specific zoom level.
-              </Text>
-
-              <Text
-                style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
-              >
-                Real object height (cm)
-              </Text>
-              <TextInput
-                value={realObjectHeightCm}
-                onChangeText={setRealObjectHeightCm}
-                keyboardType="decimal-pad"
-                style={{
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                  borderRadius: 14,
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  backgroundColor: palette.surfaceStrong,
-                  color: palette.text,
-                }}
-              />
-
-              <Text
-                style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
-              >
-                Known distance (cm)
-              </Text>
-              <TextInput
-                value={knownDistanceCm}
-                onChangeText={setKnownDistanceCm}
-                keyboardType="decimal-pad"
-                style={{
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                  borderRadius: 14,
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  backgroundColor: palette.surfaceStrong,
-                  color: palette.text,
-                }}
-              />
-
-              <Text
-                style={{ color: palette.muted, fontSize: 12, fontWeight: "600" }}
-              >
-                Zoom level
-              </Text>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                {[1, 3].map((zoom) => {
-                  const active = calibrationZoomLevel === zoom;
-                  return (
-                    <Pressable
-                      key={zoom}
-                      onPress={() => setCalibrationZoomLevel(zoom as 1 | 3)}
+                return (
+                  <View
+                    key={zoom}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: palette.border,
+                      borderRadius: 18,
+                      padding: 14,
+                      gap: 10,
+                      backgroundColor: palette.surfaceStrong,
+                    }}
+                  >
+                    <View
                       style={{
-                        flex: 1,
-                        borderRadius: 14,
-                        paddingVertical: 12,
-                        backgroundColor: active ? palette.accent : palette.surfaceStrong,
-                        borderWidth: 1,
-                        borderColor: active ? palette.accent : palette.border,
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 12,
                       }}
                     >
-                      <Text
+                      <Text style={{ fontWeight: "700", color: palette.text, flex: 1 }}>
+                        {zoom}x checkerboard capture
+                      </Text>
+                      <View
                         style={{
-                          textAlign: "center",
-                          fontWeight: "700",
-                          color: active ? "#ffffff" : palette.text,
+                          backgroundColor: existingProfile ? palette.greenSoft : palette.accentSoft,
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
                         }}
                       >
-                        {zoom}x lens
+                        <Text
+                          style={{
+                            color: existingProfile ? palette.greenText : palette.accentDark,
+                            fontWeight: "700",
+                            fontSize: 12,
+                          }}
+                        >
+                          {existingProfile ? `${existingProfile.focalLengthPixels} px` : "Needed"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={{ color: palette.muted, fontSize: 12 }}>
+                      {existingProfile
+                        ? `Saved calibration at ${existingProfile.actualZoomFactor?.toFixed(1) ?? zoom}x. Capture again to replace it.`
+                        : "No saved calibration yet for this zoom."}
+                    </Text>
+
+                    <Pressable
+                      onPress={() => {
+                        setCalibrationTargetZoom(zoom);
+                        setCalibrationCameraOpen(true);
+                      }}
+                      disabled={loading}
+                      style={{
+                        backgroundColor: loading ? palette.accentDark : palette.accent,
+                        paddingVertical: 12,
+                        borderRadius: 14,
+                        opacity: loading ? 0.75 : 1,
+                      }}
+                    >
+                      <Text style={{ color: "white", textAlign: "center", fontWeight: "700" }}>
+                        {existingProfile ? `Recalibrate ${zoom}x` : `Capture ${zoom}x checkerboard`}
                       </Text>
                     </Pressable>
-                  );
-                })}
-              </View>
-
-              <Pressable
-                onPress={handleCalibrationSubmit}
-                disabled={loading}
-                style={{
-                  backgroundColor: loading ? palette.accentDark : palette.accent,
-                  paddingVertical: 14,
-                  borderRadius: 16,
-                  marginTop: 6,
-                }}
-              >
-                <Text
-                  style={{ color: "white", textAlign: "center", fontWeight: "700" }}
-                >
-                  {loading ? "Calibrating..." : "Calibrate focal length"}
-                </Text>
-              </Pressable>
+                  </View>
+                );
+              })}
             </View>
           </>
         )}

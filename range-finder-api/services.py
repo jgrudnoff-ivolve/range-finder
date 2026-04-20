@@ -5,9 +5,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 from PIL import Image
+import numpy as np
 
 MIN_LINE_PIXELS = 20
 GOLF_FLAG_HEIGHT_CM = 213.0
+CHECKERBOARD_PATTERN_SIZE = (9, 6)
 
 
 class ServiceValidationError(ValueError):
@@ -16,12 +18,7 @@ class ServiceValidationError(ValueError):
 
 @dataclass
 class CalibrationInput:
-    real_object_height_cm: float
-    known_distance_cm: float
-    line_x1: float
-    line_y1: float
-    line_x2: float
-    line_y2: float
+    image: Image.Image
     image_width: int
     image_height: int
 
@@ -187,20 +184,97 @@ def detect_golf_flag_line_from_roboflow(image: Image.Image, zoom_factor: float =
 
 
 def calibrate_focal_length(data: CalibrationInput):
-    validate_positive("real_object_height_cm", data.real_object_height_cm)
-    validate_positive("known_distance_cm", data.known_distance_cm)
+    try:
+        import cv2
+    except Exception as exc:
+        raise ServiceValidationError(
+            "Checkerboard calibration requires OpenCV on the backend."
+        ) from exc
 
-    px, _, _ = measure_line(
-        data.line_x1, data.line_y1,
-        data.line_x2, data.line_y2,
-        data.image_width, data.image_height
+    grayscale = np.array(data.image.convert("L"))
+    corners = None
+
+    if hasattr(cv2, "findChessboardCornersSB"):
+        found, sb_corners = cv2.findChessboardCornersSB(
+            grayscale,
+            CHECKERBOARD_PATTERN_SIZE,
+        )
+        if found:
+            corners = sb_corners.astype(np.float32)
+    else:
+        found = False
+
+    if corners is None:
+        found, detected_corners = cv2.findChessboardCorners(
+            grayscale,
+            CHECKERBOARD_PATTERN_SIZE,
+            cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE,
+        )
+        if not found:
+            raise ServiceValidationError(
+                "Could not find the checkerboard. Use a clear, centered checkerboard photo."
+            )
+
+        criteria = (
+            cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+            30,
+            0.001,
+        )
+        corners = cv2.cornerSubPix(
+            grayscale,
+            detected_corners,
+            (11, 11),
+            (-1, -1),
+            criteria,
+        )
+
+    object_points = np.zeros(
+        (CHECKERBOARD_PATTERN_SIZE[0] * CHECKERBOARD_PATTERN_SIZE[1], 3),
+        np.float32,
+    )
+    object_points[:, :2] = np.mgrid[
+        0:CHECKERBOARD_PATTERN_SIZE[0],
+        0:CHECKERBOARD_PATTERN_SIZE[1],
+    ].T.reshape(-1, 2)
+
+    initial_camera_matrix = np.array(
+        [
+            [max(data.image_width, data.image_height), 0, data.image_width / 2],
+            [0, max(data.image_width, data.image_height), data.image_height / 2],
+            [0, 0, 1],
+        ],
+        dtype=np.float64,
+    )
+    initial_distortion = np.zeros((5, 1), dtype=np.float64)
+
+    reprojection_error, camera_matrix, _, _, _ = cv2.calibrateCamera(
+        [object_points],
+        [corners],
+        (data.image_width, data.image_height),
+        initial_camera_matrix,
+        initial_distortion,
+        flags=
+        cv2.CALIB_USE_INTRINSIC_GUESS
+        | cv2.CALIB_FIX_PRINCIPAL_POINT
+        | cv2.CALIB_ZERO_TANGENT_DIST
+        | cv2.CALIB_FIX_K1
+        | cv2.CALIB_FIX_K2
+        | cv2.CALIB_FIX_K3
+        | cv2.CALIB_FIX_K4
+        | cv2.CALIB_FIX_K5
+        | cv2.CALIB_FIX_K6,
     )
 
-    focal = calculate_focal(px, data.known_distance_cm, data.real_object_height_cm)
+    focal = float((camera_matrix[0, 0] + camera_matrix[1, 1]) / 2)
+    checkerboard_height_pixels = float(
+        corners[:, 0, 1].max() - corners[:, 0, 1].min()
+    )
 
     return {
         "focal_length_pixels": round(focal, 2),
-        "object_height_pixels": round(px, 2),
+        "object_height_pixels": round(checkerboard_height_pixels, 2),
+        "reprojection_error": round(float(reprojection_error), 4),
+        "checkerboard_pattern": f"{CHECKERBOARD_PATTERN_SIZE[0]}x{CHECKERBOARD_PATTERN_SIZE[1]}",
     }
 
 

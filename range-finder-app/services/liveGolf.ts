@@ -2,21 +2,18 @@ import { CalibrationProfile, GolfEstimateResponse } from "../types";
 
 const DEFAULT_ONE_X_PROFILE: CalibrationProfile = {
   id: "default-1x",
-  name: "Rear Camera 1x Zoom (Default)",
+  name: "Rear Camera 1.0x",
   focalLengthPixels: 2900,
   zoomLevel: 1,
+  actualZoomFactor: 1,
 };
 
 const DEFAULT_THREE_X_PROFILE: CalibrationProfile = {
   id: "default-3x",
-  name: "Rear Camera 3x Zoom (Default)",
+  name: "Rear Camera 3.0x",
   focalLengthPixels: 7800,
   zoomLevel: 3,
-};
-
-export type LiveGolfCalibration = {
-  oneX: CalibrationProfile;
-  threeX: CalibrationProfile;
+  actualZoomFactor: 3,
 };
 
 export type ProjectedGolfLine = {
@@ -36,81 +33,24 @@ export type PreparedLiveGolfSnapshot = {
   height: number;
 };
 
-export type LiveGolfLensMode = {
-  id: "1x" | "3x";
+export type LiveGolfPreset = {
+  id: string;
   label: string;
   focalLengthPixels: number;
-  lens: string | null;
+  zoomFactor: number;
 };
 
-function isOneXProfile(profile: CalibrationProfile) {
-  if (profile.zoomLevel === 1) {
-    return true;
-  }
-  const name = profile.name.toLowerCase();
-  return profile.id === DEFAULT_ONE_X_PROFILE.id || name.includes("1x");
-}
+export function resolveLiveGolfPresets(profiles: CalibrationProfile[]) {
+  const normalized = profiles.length > 0 ? profiles : [DEFAULT_ONE_X_PROFILE, DEFAULT_THREE_X_PROFILE];
 
-function isThreeXProfile(profile: CalibrationProfile) {
-  if (profile.zoomLevel === 3) {
-    return true;
-  }
-  const name = profile.name.toLowerCase();
-  return profile.id === DEFAULT_THREE_X_PROFILE.id || name.includes("3x");
-}
-
-export function resolveLiveGolfCalibration(
-  profiles: CalibrationProfile[]
-): LiveGolfCalibration {
-  const oneX = profiles.find(isOneXProfile) ?? DEFAULT_ONE_X_PROFILE;
-  const threeX = profiles.find(isThreeXProfile) ?? DEFAULT_THREE_X_PROFILE;
-
-  return { oneX, threeX };
-}
-
-export function resolveWideLens(availableLenses: string[]) {
-  return (
-    availableLenses.find((lens) => lens === "builtInWideAngleCamera") ??
-    availableLenses.find((lens) => lens.toLowerCase().includes("wide")) ??
-    null
-  );
-}
-
-export function resolveTelephotoLens(availableLenses: string[]) {
-  return (
-    availableLenses.find((lens) => lens === "builtInTelephotoCamera") ??
-    availableLenses.find((lens) => lens.toLowerCase().includes("telephoto")) ??
-    null
-  );
-}
-
-export function resolveLiveGolfLensModes(
-  calibration: LiveGolfCalibration,
-  availableLenses: string[],
-  platform: "ios" | "android" | "web"
-): LiveGolfLensMode[] {
-  const modes: LiveGolfLensMode[] = [
-    {
-      id: "1x",
-      label: "1x lens",
-      focalLengthPixels: calibration.oneX.focalLengthPixels,
-      lens: platform === "ios" ? resolveWideLens(availableLenses) : null,
-    },
-  ];
-
-  if (platform === "ios") {
-    const telephotoLens = resolveTelephotoLens(availableLenses);
-    if (telephotoLens) {
-      modes.push({
-        id: "3x",
-        label: "3x telephoto",
-        focalLengthPixels: calibration.threeX.focalLengthPixels,
-        lens: telephotoLens,
-      });
-    }
-  }
-
-  return modes;
+  return [...normalized]
+    .map((profile) => ({
+      id: profile.id,
+      label: `${(profile.actualZoomFactor ?? profile.zoomLevel ?? 1).toFixed(1)}x`,
+      focalLengthPixels: profile.focalLengthPixels,
+      zoomFactor: profile.actualZoomFactor ?? profile.zoomLevel ?? 1,
+    }))
+    .sort((a, b) => a.zoomFactor - b.zoomFactor);
 }
 
 export async function prepareLiveGolfSnapshot(

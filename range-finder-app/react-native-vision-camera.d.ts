@@ -15,6 +15,7 @@ declare module "react-native-vision-camera" {
     isVirtualDevice?: boolean;
     minZoom?: number;
     maxZoom?: number;
+    neutralZoom?: number;
     zoomLensSwitchFactors?: number[];
   };
 
