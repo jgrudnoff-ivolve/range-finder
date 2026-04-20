@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 from PIL import Image
-import numpy as np
 
 MIN_LINE_PIXELS = 20
 GOLF_FLAG_HEIGHT_CM = 213.0
 CHECKERBOARD_PATTERN_SIZE = (9, 6)
+CHECKERBOARD_MAX_DIMENSION = 1600
 
 
 class ServiceValidationError(ValueError):
@@ -186,12 +186,23 @@ def detect_golf_flag_line_from_roboflow(image: Image.Image, zoom_factor: float =
 def calibrate_focal_length(data: CalibrationInput):
     try:
         import cv2
+        import numpy as np
     except Exception as exc:
         raise ServiceValidationError(
             "Checkerboard calibration requires OpenCV on the backend."
         ) from exc
 
-    grayscale = np.array(data.image.convert("L"))
+    grayscale_image = data.image.convert("L")
+    working_width, working_height = grayscale_image.size
+    scale = 1.0
+
+    if max(working_width, working_height) > CHECKERBOARD_MAX_DIMENSION:
+        scale = CHECKERBOARD_MAX_DIMENSION / max(working_width, working_height)
+        working_width = max(1, round(working_width * scale))
+        working_height = max(1, round(working_height * scale))
+        grayscale_image = grayscale_image.resize((working_width, working_height))
+
+    grayscale = np.array(grayscale_image)
     corners = None
 
     if hasattr(cv2, "findChessboardCornersSB"):
@@ -227,6 +238,9 @@ def calibrate_focal_length(data: CalibrationInput):
             (-1, -1),
             criteria,
         )
+
+    if scale != 1.0:
+        corners = corners / scale
 
     object_points = np.zeros(
         (CHECKERBOARD_PATTERN_SIZE[0] * CHECKERBOARD_PATTERN_SIZE[1], 3),
