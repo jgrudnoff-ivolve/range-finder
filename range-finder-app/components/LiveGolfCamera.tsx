@@ -51,19 +51,6 @@ export function LiveGolfCamera({
     return Math.min(Math.max(value, minZoom), maxZoom);
   }
 
-  function toCameraZoomValue(userZoomFactor: number, neutralZoom = 1, minZoom = 1, maxZoom = 1) {
-    const requestedCameraZoom = neutralZoom * userZoomFactor;
-    return clampZoomValue(requestedCameraZoom, minZoom, maxZoom);
-  }
-
-  function fromCameraZoomValue(cameraZoom: number, neutralZoom = 1) {
-    if (!neutralZoom) {
-      return cameraZoom;
-    }
-
-    return cameraZoom / neutralZoom;
-  }
-
   const { hasPermission, requestPermission } = useCameraPermission();
   const [cameraReady, setCameraReady] = useState(false);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
@@ -93,16 +80,14 @@ export function LiveGolfCamera({
 
     const minZoom = backDevice.minZoom ?? 1;
     const maxZoom = backDevice.maxZoom ?? Math.max(1, selectedPreset.zoomFactor);
-    const neutralZoom = backDevice.neutralZoom ?? 1;
-    const zoom = toCameraZoomValue(currentZoomFactor, neutralZoom, minZoom, maxZoom);
+    const zoom = clampZoomValue(currentZoomFactor, minZoom, maxZoom);
 
     return {
       device: backDevice,
       minZoom,
       maxZoom,
-      neutralZoom,
       zoom,
-      userZoomFactor: fromCameraZoomValue(zoom, neutralZoom),
+      userZoomFactor: zoom,
       zoomStep: 0.1,
     };
   }, [backDevice, currentZoomFactor, selectedPreset]);

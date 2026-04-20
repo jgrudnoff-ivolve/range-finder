@@ -244,6 +244,12 @@ export function ResultSummary({ result }: Props) {
             value={`${Math.round(result.data.focal_length_pixels)} px`}
             tone="accent"
           />
+          {result.data.used_images !== undefined ? (
+            <Stat
+              label="Images used"
+              value={String(result.data.used_images)}
+            />
+          ) : null}
           {result.data.reprojection_error !== undefined ? (
             <Stat
               label="Reprojection error"

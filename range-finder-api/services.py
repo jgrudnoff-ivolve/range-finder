@@ -17,6 +17,7 @@ CHECKERBOARD_PATTERN_SIZES = [
     (5, 7),
 ]
 CHECKERBOARD_MAX_DIMENSION = 1600
+MIN_CHECKERBOARD_CALIBRATION_IMAGES = 5
 
 
 class ServiceValidationError(ValueError):
@@ -25,9 +26,9 @@ class ServiceValidationError(ValueError):
 
 @dataclass
 class CalibrationInput:
-    image: Image.Image
-    image_width: int
-    image_height: int
+    images: list[Image.Image]
+    image_widths: list[int]
+    image_heights: list[int]
 
 
 @dataclass
@@ -199,85 +200,109 @@ def calibrate_focal_length(data: CalibrationInput):
             "Checkerboard calibration requires OpenCV on the backend."
         ) from exc
 
-    grayscale_image = data.image.convert("L")
-    working_width, working_height = grayscale_image.size
-    scale = 1.0
-
-    if max(working_width, working_height) > CHECKERBOARD_MAX_DIMENSION:
-        scale = CHECKERBOARD_MAX_DIMENSION / max(working_width, working_height)
-        working_width = max(1, round(working_width * scale))
-        working_height = max(1, round(working_height * scale))
-        grayscale_image = grayscale_image.resize((working_width, working_height))
-
-    grayscale = np.array(grayscale_image)
-    equalized = cv2.equalizeHist(grayscale)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(grayscale)
-    detection_images = [grayscale, equalized, enhanced]
-
-    corners = None
+    image_points = []
+    object_points = []
     pattern_size = None
+    successful_images = 0
+    image_size = None
 
-    for candidate_pattern_size in CHECKERBOARD_PATTERN_SIZES:
-        for detection_image in detection_images:
-            if hasattr(cv2, "findChessboardCornersSB"):
-                found, sb_corners = cv2.findChessboardCornersSB(
+    for image, image_width, image_height in zip(
+        data.images,
+        data.image_widths,
+        data.image_heights,
+    ):
+        grayscale_image = image.convert("L")
+        working_width, working_height = grayscale_image.size
+        scale = 1.0
+
+        if max(working_width, working_height) > CHECKERBOARD_MAX_DIMENSION:
+            scale = CHECKERBOARD_MAX_DIMENSION / max(working_width, working_height)
+            working_width = max(1, round(working_width * scale))
+            working_height = max(1, round(working_height * scale))
+            grayscale_image = grayscale_image.resize((working_width, working_height))
+
+        grayscale = np.array(grayscale_image)
+        equalized = cv2.equalizeHist(grayscale)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(grayscale)
+        detection_images = [grayscale, equalized, enhanced]
+
+        corners = None
+        current_pattern_size = pattern_size
+        candidate_patterns = [pattern_size] if pattern_size else CHECKERBOARD_PATTERN_SIZES
+
+        for candidate_pattern_size in candidate_patterns:
+            if candidate_pattern_size is None:
+                continue
+
+            for detection_image in detection_images:
+                if hasattr(cv2, "findChessboardCornersSB"):
+                    found, sb_corners = cv2.findChessboardCornersSB(
+                        detection_image,
+                        candidate_pattern_size,
+                        flags=cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_EXHAUSTIVE,
+                    )
+                    if found:
+                        corners = sb_corners.astype(np.float32)
+                        current_pattern_size = candidate_pattern_size
+                        break
+
+                found, detected_corners = cv2.findChessboardCorners(
                     detection_image,
                     candidate_pattern_size,
-                    flags=cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_EXHAUSTIVE,
+                    cv2.CALIB_CB_ADAPTIVE_THRESH
+                    | cv2.CALIB_CB_NORMALIZE_IMAGE
+                    | cv2.CALIB_CB_FAST_CHECK,
                 )
                 if found:
-                    corners = sb_corners.astype(np.float32)
-                    pattern_size = candidate_pattern_size
+                    criteria = (
+                        cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+                        30,
+                        0.001,
+                    )
+                    corners = cv2.cornerSubPix(
+                        detection_image,
+                        detected_corners,
+                        (11, 11),
+                        (-1, -1),
+                        criteria,
+                    )
+                    current_pattern_size = candidate_pattern_size
                     break
 
-            found, detected_corners = cv2.findChessboardCorners(
-                detection_image,
-                candidate_pattern_size,
-                cv2.CALIB_CB_ADAPTIVE_THRESH
-                | cv2.CALIB_CB_NORMALIZE_IMAGE
-                | cv2.CALIB_CB_FAST_CHECK,
-            )
-            if found:
-                criteria = (
-                    cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
-                    30,
-                    0.001,
-                )
-                corners = cv2.cornerSubPix(
-                    detection_image,
-                    detected_corners,
-                    (11, 11),
-                    (-1, -1),
-                    criteria,
-                )
-                pattern_size = candidate_pattern_size
+            if corners is not None:
                 break
 
-        if corners is not None:
-            break
+        if corners is None or current_pattern_size is None:
+            continue
 
-    if corners is None or pattern_size is None:
-        raise ServiceValidationError(
-            "Could not find the checkerboard. Use a full, sharp checkerboard photo and make sure the board pattern is one of 9x6, 8x6, or 7x5 inner corners."
+        if scale != 1.0:
+            corners = corners / scale
+
+        single_object_points = np.zeros(
+            (current_pattern_size[0] * current_pattern_size[1], 3),
+            np.float32,
         )
+        single_object_points[:, :2] = np.mgrid[
+            0:current_pattern_size[0],
+            0:current_pattern_size[1],
+        ].T.reshape(-1, 2)
 
-    if scale != 1.0:
-        corners = corners / scale
+        object_points.append(single_object_points)
+        image_points.append(corners)
+        pattern_size = current_pattern_size
+        image_size = (image_width, image_height)
+        successful_images += 1
 
-    object_points = np.zeros(
-        (pattern_size[0] * pattern_size[1], 3),
-        np.float32,
-    )
-    object_points[:, :2] = np.mgrid[
-        0:pattern_size[0],
-        0:pattern_size[1],
-    ].T.reshape(-1, 2)
+    if successful_images < MIN_CHECKERBOARD_CALIBRATION_IMAGES or pattern_size is None or image_size is None:
+        raise ServiceValidationError(
+            f"Could not calibrate from enough checkerboard photos. Capture at least {MIN_CHECKERBOARD_CALIBRATION_IMAGES} sharp images of the same checkerboard pattern."
+        )
 
     initial_camera_matrix = np.array(
         [
-            [max(data.image_width, data.image_height), 0, data.image_width / 2],
-            [0, max(data.image_width, data.image_height), data.image_height / 2],
+            [max(image_size[0], image_size[1]), 0, image_size[0] / 2],
+            [0, max(image_size[0], image_size[1]), image_size[1] / 2],
             [0, 0, 1],
         ],
         dtype=np.float64,
@@ -285,9 +310,9 @@ def calibrate_focal_length(data: CalibrationInput):
     initial_distortion = np.zeros((5, 1), dtype=np.float64)
 
     reprojection_error, camera_matrix, _, _, _ = cv2.calibrateCamera(
-        [object_points],
-        [corners],
-        (data.image_width, data.image_height),
+        object_points,
+        image_points,
+        image_size,
         initial_camera_matrix,
         initial_distortion,
         flags=
@@ -304,7 +329,8 @@ def calibrate_focal_length(data: CalibrationInput):
 
     focal = float((camera_matrix[0, 0] + camera_matrix[1, 1]) / 2)
     checkerboard_height_pixels = float(
-        corners[:, 0, 1].max() - corners[:, 0, 1].min()
+        sum(points[:, 0, 1].max() - points[:, 0, 1].min() for points in image_points)
+        / len(image_points)
     )
 
     return {
@@ -312,6 +338,7 @@ def calibrate_focal_length(data: CalibrationInput):
         "object_height_pixels": round(checkerboard_height_pixels, 2),
         "reprojection_error": round(float(reprojection_error), 4),
         "checkerboard_pattern": f"{pattern_size[0]}x{pattern_size[1]}",
+        "used_images": successful_images,
     }
 
 

@@ -33,18 +33,20 @@ def health():
 
 @app.post("/calibrate-focal-length")
 async def calibrate_focal_length_endpoint(
-    image: UploadFile = File(...),
+    images: list[UploadFile] = File(...),
 ):
-    file_bytes = await image.read()
-
     try:
-        validate_upload(image.content_type, file_bytes)
-        img = load_and_validate_image(file_bytes)
+        loaded_images = []
+        for image in images:
+            file_bytes = await image.read()
+            validate_upload(image.content_type, file_bytes)
+            loaded_images.append(load_and_validate_image(file_bytes))
 
         result = calibrate_focal_length(
             CalibrationInput(
-                img.image,
-                img.width, img.height,
+                [loaded.image for loaded in loaded_images],
+                [loaded.width for loaded in loaded_images],
+                [loaded.height for loaded in loaded_images],
             )
         )
 

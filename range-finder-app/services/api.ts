@@ -9,7 +9,7 @@ import {
 
 type CalibrateInput = {
   apiBaseUrl: string;
-  imageUri: string;
+  imageUris: string[];
 };
 
 type EstimateInput = {
@@ -71,7 +71,9 @@ export async function calibrateFocalLength(
 ): Promise<CalibrationResponse> {
   const formData = new FormData();
 
-  formData.append("image", await createImageFormPart(input.imageUri));
+  for (const imageUri of input.imageUris) {
+    formData.append("images", await createImageFormPart(imageUri));
+  }
 
   const response = await fetch(
     `${input.apiBaseUrl}/calibrate-focal-length`,

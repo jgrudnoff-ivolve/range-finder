@@ -16,50 +16,33 @@ import {
 import { AppPalette } from "../theme";
 
 type CaptureResult = {
-  uri: string;
-  width: number;
-  height: number;
+  imageUris: string[];
   zoomFactor: number;
 };
 
 type Props = {
   palette: AppPalette;
-  targetZoomFactor: number;
   onClose: () => void;
   onCapture: (result: CaptureResult) => void;
 };
+
+const REQUIRED_CAPTURE_COUNT = 5;
 
 function clampZoomValue(value: number, minZoom = 1, maxZoom = 1) {
   return Math.min(Math.max(value, minZoom), maxZoom);
 }
 
-function toCameraZoomValue(
-  userZoomFactor: number,
-  neutralZoom = 1,
-  minZoom = 1,
-  maxZoom = 1
-) {
-  return clampZoomValue(neutralZoom * userZoomFactor, minZoom, maxZoom);
-}
-
-function fromCameraZoomValue(cameraZoom: number, neutralZoom = 1) {
-  if (!neutralZoom) {
-    return cameraZoom;
-  }
-
-  return cameraZoom / neutralZoom;
-}
-
 export function CalibrationCameraCapture({
   palette,
-  targetZoomFactor,
   onClose,
   onCapture,
 }: Props) {
   const { hasPermission, requestPermission } = useCameraPermission();
   const [cameraReady, setCameraReady] = useState(false);
+  const [currentZoomFactor, setCurrentZoomFactor] = useState(1);
   const [capturing, setCapturing] = useState(false);
   const [mountError, setMountError] = useState<string | null>(null);
+  const [capturedImageUris, setCapturedImageUris] = useState<string[]>([]);
 
   const cameraRef = useRef<Camera | null>(null);
   const backDevice = useCameraDevice("back");
@@ -70,19 +53,18 @@ export function CalibrationCameraCapture({
     }
 
     const minZoom = backDevice.minZoom ?? 1;
-    const maxZoom = backDevice.maxZoom ?? Math.max(8, targetZoomFactor);
-    const neutralZoom = backDevice.neutralZoom ?? 1;
-    const zoom = toCameraZoomValue(targetZoomFactor, neutralZoom, minZoom, maxZoom);
+    const maxZoom = backDevice.maxZoom ?? 8;
+    const zoom = clampZoomValue(currentZoomFactor, minZoom, maxZoom);
 
     return {
       device: backDevice,
       zoom,
       minZoom,
       maxZoom,
-      neutralZoom,
-      userZoomFactor: fromCameraZoomValue(zoom, neutralZoom),
+      userZoomFactor: zoom,
+      zoomStep: 0.1,
     };
-  }, [backDevice, targetZoomFactor]);
+  }, [backDevice, currentZoomFactor]);
 
   async function handleCapture() {
     if (!cameraRef.current || !cameraConfig || !cameraReady || capturing) {
@@ -95,16 +77,21 @@ export function CalibrationCameraCapture({
         enableShutterSound: false,
       });
       const uri = photo.path.startsWith("file://") ? photo.path : `file://${photo.path}`;
-
-      onCapture({
-        uri,
-        width: photo.width,
-        height: photo.height,
-        zoomFactor: Number(cameraConfig.userZoomFactor.toFixed(2)),
-      });
+      setCapturedImageUris((current) => [...current, uri]);
     } finally {
       setCapturing(false);
     }
+  }
+
+  function handleFinish() {
+    if (!cameraConfig || capturedImageUris.length < REQUIRED_CAPTURE_COUNT) {
+      return;
+    }
+
+    onCapture({
+      imageUris: capturedImageUris,
+      zoomFactor: Number(cameraConfig.userZoomFactor.toFixed(2)),
+    });
   }
 
   if (Platform.OS === "web") {
@@ -251,11 +238,11 @@ export function CalibrationCameraCapture({
           padding: 16,
           justifyContent: "space-between",
         }}
-      >
-        <View style={{ gap: 12 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Pressable
-              onPress={onClose}
+        >
+          <View style={{ gap: 12 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Pressable
+                onPress={onClose}
               style={{
                 backgroundColor: "rgba(255,255,255,0.12)",
                 borderRadius: 18,
@@ -282,6 +269,37 @@ export function CalibrationCameraCapture({
                 Zoom {cameraConfig.userZoomFactor.toFixed(2)}x
               </Text>
             </View>
+            <View
+              style={{
+                backgroundColor: "rgba(8, 15, 11, 0.72)",
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+              }}
+            >
+              <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 12 }}>
+                {capturedImageUris.length}/{REQUIRED_CAPTURE_COUNT} captures
+              </Text>
+            </View>
+            <View
+              style={{
+                backgroundColor: "rgba(8, 15, 11, 0.72)",
+                borderRadius: 18,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                alignSelf: "flex-start",
+              }}
+            >
+              <Text style={{ color: "#b7d6bf", fontSize: 11, fontWeight: "800", letterSpacing: 0.8 }}>
+                CALIBRATING NOW
+              </Text>
+              <Text style={{ color: "#ffffff", fontSize: 20, fontWeight: "800", marginTop: 4 }}>
+                {cameraConfig.userZoomFactor.toFixed(2)}x
+              </Text>
+              <Text style={{ color: "rgba(255,255,255,0.74)", fontSize: 12, marginTop: 4 }}>
+                This photo will be saved as the {cameraConfig.userZoomFactor.toFixed(2)}x calibration.
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -296,8 +314,82 @@ export function CalibrationCameraCapture({
           }}
         >
           <Text style={{ color: "rgba(255,255,255,0.74)", textAlign: "center", lineHeight: 18 }}>
-            Capture one centered checkerboard photo at the locked {cameraConfig.userZoomFactor.toFixed(2)}x zoom.
+            Adjust the zoom until the level above is the one you want to save, then capture {REQUIRED_CAPTURE_COUNT} centered checkerboard photos from slightly different angles.
           </Text>
+
+          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+            <Pressable
+              onPress={() => {
+                setCurrentZoomFactor((value) =>
+                  Number(
+                    clampZoomValue(
+                      value - cameraConfig.zoomStep,
+                      cameraConfig.minZoom,
+                      cameraConfig.maxZoom
+                    ).toFixed(2)
+                  )
+                );
+              }}
+              disabled={capturing}
+              style={{
+                width: 52,
+                borderRadius: 16,
+                paddingVertical: 12,
+                backgroundColor: "rgba(255,255,255,0.08)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+                opacity: capturing ? 0.65 : 1,
+              }}
+            >
+              <Text style={{ color: "#ffffff", textAlign: "center", fontWeight: "800", fontSize: 18 }}>
+                -
+              </Text>
+            </Pressable>
+
+            <View
+              style={{
+                flex: 1,
+                borderRadius: 16,
+                paddingVertical: 12,
+                paddingHorizontal: 14,
+                backgroundColor: "rgba(255,255,255,0.06)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+              }}
+            >
+              <Text style={{ color: "#ffffff", fontWeight: "800", textAlign: "center" }}>
+                Save current zoom
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={() => {
+                setCurrentZoomFactor((value) =>
+                  Number(
+                    clampZoomValue(
+                      value + cameraConfig.zoomStep,
+                      cameraConfig.minZoom,
+                      cameraConfig.maxZoom
+                    ).toFixed(2)
+                  )
+                );
+              }}
+              disabled={capturing}
+              style={{
+                width: 52,
+                borderRadius: 16,
+                paddingVertical: 12,
+                backgroundColor: "rgba(255,255,255,0.08)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+                opacity: capturing ? 0.65 : 1,
+              }}
+            >
+              <Text style={{ color: "#ffffff", textAlign: "center", fontWeight: "800", fontSize: 18 }}>
+                +
+              </Text>
+            </Pressable>
+          </View>
 
           <Pressable
             onPress={() => {
@@ -316,7 +408,30 @@ export function CalibrationCameraCapture({
             }}
           >
             <Text style={{ color: "#ffffff", fontWeight: "800", textAlign: "center" }}>
-              {capturing ? "Capturing..." : "Use this calibration photo"}
+              {capturing ? "Capturing..." : "Capture checkerboard photo"}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={handleFinish}
+            disabled={capturing || capturedImageUris.length < REQUIRED_CAPTURE_COUNT}
+            style={{
+              borderRadius: 18,
+              paddingVertical: 14,
+              backgroundColor:
+                capturing || capturedImageUris.length < REQUIRED_CAPTURE_COUNT
+                  ? "rgba(255,255,255,0.08)"
+                  : "#2ea56e",
+              borderWidth: 1,
+              borderColor:
+                capturing || capturedImageUris.length < REQUIRED_CAPTURE_COUNT
+                  ? "rgba(255,255,255,0.12)"
+                  : "#2ea56e",
+              opacity: capturing || capturedImageUris.length < REQUIRED_CAPTURE_COUNT ? 0.75 : 1,
+            }}
+          >
+            <Text style={{ color: "#ffffff", fontWeight: "800", textAlign: "center" }}>
+              Save {cameraConfig.userZoomFactor.toFixed(2)}x calibration
             </Text>
           </Pressable>
 

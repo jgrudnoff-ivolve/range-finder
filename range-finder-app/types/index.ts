@@ -18,6 +18,7 @@ export type CalibrationResponse = {
   object_height_pixels: number;
   reprojection_error?: number;
   checkerboard_pattern?: string;
+  used_images?: number;
 };
 
 export type EstimateResponse = {

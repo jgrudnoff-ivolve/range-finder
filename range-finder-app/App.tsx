@@ -37,7 +37,6 @@ import {
 import { palettes, ScreenMode } from "./theme";
 
 const API_BASE_URL = "https://range-finder-1nzw.onrender.com";
-const REQUIRED_CALIBRATION_ZOOMS = [1, 3, 5];
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenMode>("estimate");
@@ -53,7 +52,6 @@ export default function App() {
   const [focalLengthPixels, setFocalLengthPixels] = useState("");
   const [profiles, setProfiles] = useState<CalibrationProfile[]>([]);
   const [calibrationCameraOpen, setCalibrationCameraOpen] = useState(false);
-  const [calibrationTargetZoom, setCalibrationTargetZoom] = useState<number>(1);
 
   const [result, setResult] = useState<
     | { kind: "idle" }
@@ -202,14 +200,14 @@ export default function App() {
     return true;
   }
 
-  async function calibrateCapturedImage(imageUriToCalibrate: string, zoomFactor: number) {
+  async function calibrateCapturedImage(imageUrisToCalibrate: string[], zoomFactor: number) {
     try {
       setLoading(true);
       setResult({ kind: "loading", message: `Calibrating ${zoomFactor.toFixed(1)}x checkerboard...` });
 
       const calibration = await calibrateFocalLength({
         apiBaseUrl: API_BASE_URL,
-        imageUri: imageUriToCalibrate,
+        imageUris: imageUrisToCalibrate,
       });
 
       setFocalLengthPixels(String(calibration.focal_length_pixels));
@@ -283,17 +281,11 @@ export default function App() {
   }
 
   function handleCalibrationCapture(result: {
-    uri: string;
-    width: number;
-    height: number;
+    imageUris: string[];
     zoomFactor: number;
   }) {
     setCalibrationCameraOpen(false);
-    setImageUri(result.uri);
-    setImageWidth(result.width || 1);
-    setImageHeight(result.height || 1);
-    setPoints([]);
-    void calibrateCapturedImage(result.uri, calibrationTargetZoom);
+    void calibrateCapturedImage(result.imageUris, result.zoomFactor);
   }
 
   if (screen === "golf") {
@@ -324,7 +316,6 @@ export default function App() {
     return (
       <CalibrationCameraCapture
         palette={palette}
-        targetZoomFactor={calibrationTargetZoom}
         onClose={() => setCalibrationCameraOpen(false)}
         onCapture={handleCalibrationCapture}
       />
@@ -543,7 +534,7 @@ export default function App() {
                 Calibration Setup
               </Text>
               <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
-                Calibration now uses a checkerboard photo. Capture one centered checkerboard image at each required zoom level and the app will save the focal length automatically.
+                Calibration uses a checkerboard photo. Open the camera, zoom to the level you want to calibrate, and the app will save that zoom level automatically with the focal length.
               </Text>
               <View
                 style={{
@@ -557,7 +548,7 @@ export default function App() {
                   One-time workflow
                 </Text>
                 <Text style={{ color: palette.text, lineHeight: 20 }}>
-                  Capture the checkerboard once at 1x, 3x, and 5x for each device. After that, day-to-day use stays on the estimate and golf screens.
+                  Add one calibration for each zoom level you care about. After that, day-to-day use stays on the estimate and golf screens.
                 </Text>
               </View>
             </View>
@@ -574,87 +565,27 @@ export default function App() {
             >
               <View style={{ gap: 4 }}>
                 <Text style={{ fontWeight: "700", color: palette.text, fontSize: 18 }}>
-                  Required Zooms
+                  Add Calibration
                 </Text>
                 <Text style={{ color: palette.muted, fontSize: 13 }}>
-                  Use the in-app camera to capture a checkerboard at each required zoom. The zoom is locked automatically for each capture.
+                  Use the in-app camera, zoom to the level you want, and capture one centered checkerboard photo.
                 </Text>
               </View>
 
-              {REQUIRED_CALIBRATION_ZOOMS.map((zoom) => {
-                const existingProfile = profiles.find(
-                  (profile) => Math.abs((profile.actualZoomFactor ?? profile.zoomLevel ?? 0) - zoom) < 0.05
-                );
-
-                return (
-                  <View
-                    key={zoom}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: palette.border,
-                      borderRadius: 18,
-                      padding: 14,
-                      gap: 10,
-                      backgroundColor: palette.surfaceStrong,
-                    }}
-                  >
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
-                      <Text style={{ fontWeight: "700", color: palette.text, flex: 1 }}>
-                        {zoom}x checkerboard capture
-                      </Text>
-                      <View
-                        style={{
-                          backgroundColor: existingProfile ? palette.greenSoft : palette.accentSoft,
-                          borderRadius: 999,
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: existingProfile ? palette.greenText : palette.accentDark,
-                            fontWeight: "700",
-                            fontSize: 12,
-                          }}
-                        >
-                          {existingProfile ? `${existingProfile.focalLengthPixels} px` : "Needed"}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text style={{ color: palette.muted, fontSize: 12 }}>
-                      {existingProfile
-                        ? `Saved calibration at ${existingProfile.actualZoomFactor?.toFixed(1) ?? zoom}x. Capture again to replace it.`
-                        : "No saved calibration yet for this zoom."}
-                    </Text>
-
-                    <Pressable
-                      onPress={() => {
-                        setCalibrationTargetZoom(zoom);
-                        setCalibrationCameraOpen(true);
-                      }}
-                      disabled={loading}
-                      style={{
-                        backgroundColor: loading ? palette.accentDark : palette.accent,
-                        paddingVertical: 12,
-                        borderRadius: 14,
-                        opacity: loading ? 0.75 : 1,
-                      }}
-                    >
-                      <Text style={{ color: "white", textAlign: "center", fontWeight: "700" }}>
-                        {existingProfile ? `Recalibrate ${zoom}x` : `Capture ${zoom}x checkerboard`}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
+              <Pressable
+                onPress={() => setCalibrationCameraOpen(true)}
+                disabled={loading}
+                style={{
+                  backgroundColor: loading ? palette.accentDark : palette.accent,
+                  paddingVertical: 14,
+                  borderRadius: 16,
+                  opacity: loading ? 0.75 : 1,
+                }}
+              >
+                <Text style={{ color: "white", textAlign: "center", fontWeight: "700" }}>
+                  Add zoom level calibration
+                </Text>
+              </Pressable>
             </View>
           </>
         )}
