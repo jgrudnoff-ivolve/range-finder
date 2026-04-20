@@ -8,7 +8,14 @@ from PIL import Image
 
 MIN_LINE_PIXELS = 20
 GOLF_FLAG_HEIGHT_CM = 213.0
-CHECKERBOARD_PATTERN_SIZE = (9, 6)
+CHECKERBOARD_PATTERN_SIZES = [
+    (9, 6),
+    (6, 9),
+    (8, 6),
+    (6, 8),
+    (7, 5),
+    (5, 7),
+]
 CHECKERBOARD_MAX_DIMENSION = 1600
 
 
@@ -203,52 +210,68 @@ def calibrate_focal_length(data: CalibrationInput):
         grayscale_image = grayscale_image.resize((working_width, working_height))
 
     grayscale = np.array(grayscale_image)
+    equalized = cv2.equalizeHist(grayscale)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(grayscale)
+    detection_images = [grayscale, equalized, enhanced]
+
     corners = None
+    pattern_size = None
 
-    if hasattr(cv2, "findChessboardCornersSB"):
-        found, sb_corners = cv2.findChessboardCornersSB(
-            grayscale,
-            CHECKERBOARD_PATTERN_SIZE,
-        )
-        if found:
-            corners = sb_corners.astype(np.float32)
-    else:
-        found = False
+    for candidate_pattern_size in CHECKERBOARD_PATTERN_SIZES:
+        for detection_image in detection_images:
+            if hasattr(cv2, "findChessboardCornersSB"):
+                found, sb_corners = cv2.findChessboardCornersSB(
+                    detection_image,
+                    candidate_pattern_size,
+                    flags=cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_EXHAUSTIVE,
+                )
+                if found:
+                    corners = sb_corners.astype(np.float32)
+                    pattern_size = candidate_pattern_size
+                    break
 
-    if corners is None:
-        found, detected_corners = cv2.findChessboardCorners(
-            grayscale,
-            CHECKERBOARD_PATTERN_SIZE,
-            cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE,
-        )
-        if not found:
-            raise ServiceValidationError(
-                "Could not find the checkerboard. Use a clear, centered checkerboard photo."
+            found, detected_corners = cv2.findChessboardCorners(
+                detection_image,
+                candidate_pattern_size,
+                cv2.CALIB_CB_ADAPTIVE_THRESH
+                | cv2.CALIB_CB_NORMALIZE_IMAGE
+                | cv2.CALIB_CB_FAST_CHECK,
             )
+            if found:
+                criteria = (
+                    cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+                    30,
+                    0.001,
+                )
+                corners = cv2.cornerSubPix(
+                    detection_image,
+                    detected_corners,
+                    (11, 11),
+                    (-1, -1),
+                    criteria,
+                )
+                pattern_size = candidate_pattern_size
+                break
 
-        criteria = (
-            cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
-            30,
-            0.001,
-        )
-        corners = cv2.cornerSubPix(
-            grayscale,
-            detected_corners,
-            (11, 11),
-            (-1, -1),
-            criteria,
+        if corners is not None:
+            break
+
+    if corners is None or pattern_size is None:
+        raise ServiceValidationError(
+            "Could not find the checkerboard. Use a full, sharp checkerboard photo and make sure the board pattern is one of 9x6, 8x6, or 7x5 inner corners."
         )
 
     if scale != 1.0:
         corners = corners / scale
 
     object_points = np.zeros(
-        (CHECKERBOARD_PATTERN_SIZE[0] * CHECKERBOARD_PATTERN_SIZE[1], 3),
+        (pattern_size[0] * pattern_size[1], 3),
         np.float32,
     )
     object_points[:, :2] = np.mgrid[
-        0:CHECKERBOARD_PATTERN_SIZE[0],
-        0:CHECKERBOARD_PATTERN_SIZE[1],
+        0:pattern_size[0],
+        0:pattern_size[1],
     ].T.reshape(-1, 2)
 
     initial_camera_matrix = np.array(
@@ -288,7 +311,7 @@ def calibrate_focal_length(data: CalibrationInput):
         "focal_length_pixels": round(focal, 2),
         "object_height_pixels": round(checkerboard_height_pixels, 2),
         "reprojection_error": round(float(reprojection_error), 4),
-        "checkerboard_pattern": f"{CHECKERBOARD_PATTERN_SIZE[0]}x{CHECKERBOARD_PATTERN_SIZE[1]}",
+        "checkerboard_pattern": f"{pattern_size[0]}x{pattern_size[1]}",
     }
 
 
